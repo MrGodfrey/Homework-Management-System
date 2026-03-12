@@ -1,0 +1,21 @@
+# 阶段 3：核心业务 — 作业与提交 开发总结
+
+在本阶段中，我们成功完成了作业提交系统的核心业务接口和外部存储（腾讯云 COS）集成的开发，具体内容如下：
+
+1. **COS 存储集成 (`backend/app/cos_utils.py`)**
+   - 实现了 `upload_file_to_cos(file_bytes, cos_key)`：将前端上传的文件流直接上传到腾讯云对象存储对象中并返回公开的 URL。
+   - 实现了 `generate_presigned_url(cos_key, expires)`：支持生成带时效性的防盗链预签名下载 URL，主要用于历史作业的安全下载。
+
+2. **学生核心业务路由 (`backend/app/routers/student.py`)**
+   - `GET /api/assignments`：支持查看所有作业列表，并与当前学生的提交记录联表，计算出是否已提交及最新 `version_no`。
+   - `GET /api/assignments/{id}`：拉取作业详细信息（题目、描述、截止时间和文件规则）。
+   - `POST /api/assignments/{id}/submit`：核心提交流程。
+     - 支持**截止时间校验**，依据该作业的 `allow_late` 属性决定是否拦截。
+     - 持服务端**文件类型校验**，若作业设置了 `file_rules` 将比对文件后缀。
+     - 自动查询当前学生的历史提交记录来计算 `version_no = MAX + 1` 机制，保障多版本共存。
+     - 并发上传至 COS 存储路径 `/{assignment_id}/{student_id}/v{version_no}/{filename}`。
+     - 对表 `submissions` 和 `submission_files` 进行事务保存，同时写入 `audit_logs` 日志记录防抵赖。
+   - `GET /api/assignments/{id}/submissions`：支持查看本人对某一作业的“提交历史”，同时遍历包含文件的 presigned 时效性下载链接返回给调用端。
+
+3. **依赖注册**
+   - 新路由已注册至 `backend/app/main.py` 的全局 FastAPI 实例中，系统已经具备了学生侧主要的“看作业”及“交作业”能力。

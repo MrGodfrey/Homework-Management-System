@@ -1,0 +1,9 @@
+# 阶段 5：前端开发 - 报告
+
+## 已完成的开发项
+- 初始化了 Vue 3 前端项目，依赖安装包含 axios, vue-router, pinia, element-plus 等。
+- 配置了基于 Axios 的请求实例（`utils/api.js`），支持 JWT Token 自动挂载、拦截 401 未认证并跳转回登录页。
+- 完整搭建了 `vue-router` 页面路由逻辑（包含所有阶段5计划的 Student & Admin Views）。
+- `pinia` 鉴权状态管理模块（`stores/auth.js`）。
+- 脚手架搭建了所有的前后端页面组件（`Login.vue`, `Dashboard.vue`, `AssignmentList.vue` 等）。
+- 编写了边缘场景的核心测试脚本（使用 Vitest 进行 401 及鉴权拦截器测试）。

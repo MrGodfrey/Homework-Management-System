@@ -1,0 +1,29 @@
+# 阶段 4：教师后台 开发总结
+
+在本阶段中，我们完成了教师后台的核心 API 接口开发，主要内容如下：
+
+## 1. 原型与模型扩展
+- 在 `schemas.py` 中补充了针对教师后台的数据验证模型，包括 `AssignmentCreate`、`AssignmentUpdate`、`StudentOut`、`AssignmentOut`，并设置了 `from_attributes=True` 支持 ORM 对象。
+- 利用基础模型 `AssignmentBase` 统一了新建与更新表单的数据验证。
+
+## 2. Admin 路由与接口开发
+在全新创建的 `backend/app/routers/admin.py` 中，实现了 `plan.md` 规划中的所有 API 视图函数，同时绑定了 `[Depends(get_current_instructor)]` 确保严格的教师身份鉴权：
+
+### 4.1 学生与密码管理
+- `GET /api/admin/students`: 获取全量学生列表。
+- `POST /api/admin/students/import`: 实现对上传的 CSV 文件的解析，并完成批量去重导入，若原记录不存在则自动用学号初始哈希作为密码。
+- `POST /api/admin/students/generate-passwords`: 为全量学生生成由大小写字母、数字组成的随机8位密码，并支持直接 StreamingResponse 导出 `passwords.csv` 格式的文件给老师下载存档，同时完成本地数据库哈希覆盖。
+- `POST /api/admin/students/{id}/reset-password`: 针对忘记密码的边缘情况，支持对查无此人的无效请求抛出 404，并在成功时返回明文提示管理员，后台则重新覆盖哈希存储。
+
+### 4.2 作业及看板管理
+- `GET/POST/PUT /api/admin/assignments`: 封装完整的作业列表拉取、新建以及局部更新接口。如果更新查无此目标，抛出 404 不可预期错误。
+- `GET /api/admin/dashboard`: 通过嵌套查询与二次整合将 `students`、`assignments` 映射为矩阵，查询每个学生对每个作业（基于时间维度）的最新版提交版本，缺失的默认记为 0，有效避免后端海量计算。
+- `GET /api/admin/assignments/{id}/submissions`: 完成单个作业项下的全部提交记录追踪。
+- `GET /api/admin/assignments/{id}/download`: 对接最新 / 历史模式请求标识进行下载处理（其中 COS SDK 对接预留了拓展点）。
+- `GET /api/admin/logs`: 基于 `timestamp.desc()` 获取近 100 条安全审计日志列表。
+
+## 3. 根路由注册及测试
+- 在 `main.py` 中成功注册 `admin.router`。
+- 新增 `tests.py` 完成测试框架引入与常用异常输入边缘用例插桩定义，确保证件导入无误及非法请求隔离。
+
+本阶段完成了教师通过界面批量统筹班级和审阅提交进度的所有主要后端业务闭环！

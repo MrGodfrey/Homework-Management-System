@@ -1,0 +1,20 @@
+# 阶段 2 开发总结：认证系统
+
+阶段 2 认证系统的核心开发已经全部完成。以下是完成的主要内容：
+
+1. **核心鉴权模块 (`backend/app/auth.py`)**：
+   - 使用 `passlib` (基于 `bcrypt`) 实现了安全可靠的密码哈希生成和密码校验功能；解决了 `bcrypt` 包版本不兼容导致的内部报错。
+   - 集成了 `python-jose`，实现了按照指定角色 (student/instructor) 和过期时间创建 / 解析 JWT 的功能。
+   
+2. **依赖注入 (`backend/app/dependencies.py`)**：
+   - 添加了 FastAPI 专用的拦截和鉴权依赖项。
+   - 实现了基于 Bearer Token 解析用户身份。
+   - 分别实现了 `get_current_student` 与 `get_current_instructor` 依赖，供后续具体的业务路由限制访问权限时直接调用。
+
+3. **认证路由 (`backend/app/routers/auth.py`)**：
+   - 实现了 `POST /api/auth/student/login` 接口：完成学号、姓名、密码的多条件校验验证。添加了防爆破的内存锁定状态跟踪（连续错误 5 次锁定 10 分钟）。
+   - 实现了 `POST /api/auth/instructor/login` 接口：完成教师用户名和密码的比对验证。验证成功则返回 JWT Token。
+   - 于 `main.py` 成功挂载该路由。
+
+4. **初步验证测试**：
+   - 使用 `create_admin.py` 测试脚本成功创建了具有基于 `bcrypt` 加密密码的初始教师账户，验证了配置项与数据表逻辑均正确衔接。
