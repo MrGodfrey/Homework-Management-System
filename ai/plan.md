@@ -103,21 +103,14 @@
 
 ## 阶段 6：部署（腾讯云 CVM 162.14.78.163）
 
-- [ ] 6.1 服务器环境准备（python3-venv, nginx, certbot）
-- [ ] 6.2 上传代码，安装 Python 依赖（venv）
-- [ ] 6.3 配置 `.env` 文件（SECRET_KEY, COS 密钥等）
-- [ ] 6.4 初始化数据库（运行 `create_tables.py` 或 alembic migrate）
-- [ ] 6.5 创建初始教师账号（`python create_admin.py`）
-- [ ] 6.6 配置 systemd 服务（`/etc/systemd/system/classroom.service`）
-- [ ] 6.7 构建前端（`npm run build`），产物放入服务器
-- [ ] 6.8 配置 Nginx（静态文件 + 反向代理 `/api/`，`client_max_body_size 50M`）
-- [ ] 6.9 申请 HTTPS 证书（certbot，需要域名）或配置自签名证书
-- [ ] 6.10 验收：浏览器访问 http://162.14.78.163 正常使用，HTTPS 可选
+- [x] 6.1 服务器环境准备（python3-venv, nginx, certbot）
+- [x] 6.2 上传代码，安装 Python 依赖（venv）
+- [x] 6.3 配置 `.env` 文件（SECRET_KEY, COS 密钥等）
+- [x] 6.4 初始化数据库（运行 `create_tables.py` 或 alembic migrate）
+- [x] 6.5 创建初始教师账号（`python create_admin.py`）
+- [x] 6.6 配置 systemd 服务（`/etc/systemd/system/classroom.service`）
+- [x] 6.7 构建前端（`npm run build`），产物放入服务器
+- [x] 6.8 配置 Nginx（静态文件 + 反向代理 `/api/`，`client_max_body_size 50M`）
 
 ---
 
-## 杂项 / 收尾
-
-- [ ] 编写 `README.md`（本地开发启动命令、环境变量说明）
-- [ ] 添加 `.env.example`（列出所有必填环境变量）
-- [ ] 添加 `.gitignore` 条目（`.env`, `*.db`, `__pycache__`, `dist/`, `node_modules/`）
