@@ -41,8 +41,8 @@
             </el-table-column>
             <el-table-column label="分数" min-width="90" align="center">
               <template #default="{ row }">
-                <el-tag v-if="row.is_graded" type="success">{{ row.score || '-' }}</el-tag>
-                <el-tag v-else type="info">85 (默认)</el-tag>
+                <el-tag v-if="row.is_graded" type="success">{{ row.score }}分</el-tag>
+                <el-tag v-else type="info">待评分</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="140" align="center">
@@ -77,8 +77,8 @@
               </div>
               <div class="info-row">
                 <span class="label">分数:</span>
-                <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score || '-' }}</el-tag>
-                <el-tag v-else type="info" size="small">85 (默认)</el-tag>
+                <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
+                <el-tag v-else type="info" size="small">待评分</el-tag>
               </div>
             </div>
             <div class="card-actions">
