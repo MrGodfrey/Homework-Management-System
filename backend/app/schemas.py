@@ -6,6 +6,13 @@ class StudentBase(BaseModel):
     student_id: str
     name: str
 
+class StudentCreate(StudentBase):
+    pass
+
+class StudentUpdate(BaseModel):
+    student_id: Optional[str] = None
+    name: Optional[str] = None
+
 class AssignmentBase(BaseModel):
     title: str
     description: Optional[str] = None

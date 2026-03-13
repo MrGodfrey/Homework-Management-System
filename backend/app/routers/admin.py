@@ -14,7 +14,7 @@ from sqlalchemy import func
 
 from app.database import get_db
 from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor, AssignmentFile
-from app.schemas import StudentOut, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut
+from app.schemas import StudentOut, StudentCreate, StudentUpdate, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut
 from app.dependencies import get_current_instructor
 from app.auth import hash_password
 from app.cos_utils import client as cos_client, generate_presigned_url, upload_file_to_cos
@@ -172,6 +172,62 @@ def reset_password(student_id: int, db: Session = Depends(get_db)):
             status_code=500,
             detail=f"重置密码失败: {str(e)}"
         )
+
+@router.post("/students", response_model=StudentOut)
+def create_student(student: StudentCreate, db: Session = Depends(get_db)):
+    existing = db.query(Student).filter(Student.student_id == student.student_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="该学号已存在")
+    new_student = Student(
+        student_id=student.student_id,
+        name=student.name,
+        hashed_password=hash_password(student.student_id),
+        plain_password=student.student_id  # 默认密码为学号
+    )
+    db.add(new_student)
+    db.commit()
+    db.refresh(new_student)
+    return {
+        "id": new_student.id,
+        "student_id": new_student.student_id,
+        "name": new_student.name,
+        "password": new_student.plain_password
+    }
+
+@router.put("/students/{student_id}", response_model=StudentOut)
+def update_student(student_id: int, data: StudentUpdate, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    if data.student_id is not None and data.student_id != student.student_id:
+        conflict = db.query(Student).filter(Student.student_id == data.student_id).first()
+        if conflict:
+            raise HTTPException(status_code=400, detail="该学号已被其他学生使用")
+        student.student_id = data.student_id
+    if data.name is not None:
+        student.name = data.name
+    db.commit()
+    db.refresh(student)
+    return {
+        "id": student.id,
+        "student_id": student.student_id,
+        "name": student.name,
+        "password": student.plain_password
+    }
+
+@router.delete("/students/{student_id}")
+def delete_student(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    # 删除关联的提交记录及文件
+    submissions = db.query(Submission).filter(Submission.student_id == student_id).all()
+    for sub in submissions:
+        db.query(SubmissionFile).filter(SubmissionFile.submission_id == sub.id).delete()
+    db.query(Submission).filter(Submission.student_id == student_id).delete()
+    db.delete(student)
+    db.commit()
+    return {"message": "学生已删除"}
 
 @router.get("/assignments", response_model=List[AssignmentOut])
 def get_assignments(db: Session = Depends(get_db)):

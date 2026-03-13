@@ -26,6 +26,10 @@
       </el-header>
       <el-main class="main-content">
         <div class="action-bar">
+          <el-button @click="openAddDialog" type="primary" class="add-btn">
+            <span class="btn-text">添加学生</span>
+            <span class="btn-icon">➕</span>
+          </el-button>
           <el-button @click="generatePasswords" :loading="generating" class="gen-pwd-btn">
             <span class="btn-text">批量重新生成密码</span>
             <span class="btn-icon">🔑</span>
@@ -43,9 +47,13 @@
             <el-table-column prop="student_id" label="学号" min-width="120" />
             <el-table-column prop="name" label="姓名" min-width="100" />
             <el-table-column prop="password" label="密码" min-width="120" />
-            <el-table-column label="操作" min-width="100" align="center">
+            <el-table-column label="操作" min-width="240" align="center">
               <template #default="{ row }">
-                <el-button size="small" type="warning" @click="resetPassword(row)">重置密码</el-button>
+                <div class="table-actions">
+                  <el-button size="small" type="primary" @click="openEditDialog(row)">编辑</el-button>
+                  <el-button size="small" type="warning" @click="resetPassword(row)">重置密码</el-button>
+                  <el-button size="small" type="danger" @click="deleteStudent(row)">删除</el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -66,16 +74,45 @@
               <span class="password-value">{{ student.password }}</span>
             </div>
             <div class="card-actions">
-              <el-button size="small" type="warning" @click="resetPassword(student)" style="width: 100%;">
+              <el-button size="small" type="primary" @click="openEditDialog(student)">
+                编辑
+              </el-button>
+              <el-button size="small" type="warning" @click="resetPassword(student)">
                 重置密码
+              </el-button>
+              <el-button size="small" type="danger" @click="deleteStudent(student)">
+                删除
               </el-button>
             </div>
           </div>
           <div class="empty-state" v-if="!loading && students.length === 0">
             <p>暂无学生数据</p>
-            <p class="hint">请使用"导入名单"功能添加学生</p>
+            <p class="hint">请使用"导入名单"或"添加学生"功能添加学生</p>
           </div>
         </div>
+
+        <!-- 添加/编辑学生对话框 -->
+        <el-dialog
+          v-model="dialogVisible"
+          :title="isEditing ? '编辑学生' : '添加学生'"
+          width="400px"
+          :close-on-click-modal="false"
+        >
+          <el-form :model="dialogForm" label-width="80px" @submit.prevent>
+            <el-form-item label="学号">
+              <el-input v-model="dialogForm.student_id" placeholder="请输入学号" />
+            </el-form-item>
+            <el-form-item label="姓名">
+              <el-input v-model="dialogForm.name" placeholder="请输入姓名" />
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="submitDialog" :loading="submitting">
+              {{ isEditing ? '保存' : '添加' }}
+            </el-button>
+          </template>
+        </el-dialog>
       </el-main>
     </el-container>
   </div>
@@ -93,6 +130,13 @@ const loading = ref(false)
 const generating = ref(false)
 const downloading = ref(false)
 
+// 对话框状态
+const dialogVisible = ref(false)
+const isEditing = ref(false)
+const submitting = ref(false)
+const editingId = ref(null)
+const dialogForm = ref({ student_id: '', name: '' })
+
 async function loadStudents() {
   loading.value = true
   try {
@@ -102,6 +146,74 @@ async function loadStudents() {
     ElMessage.error('加载学生列表失败')
   } finally {
     loading.value = false
+  }
+}
+
+function openAddDialog() {
+  isEditing.value = false
+  editingId.value = null
+  dialogForm.value = { student_id: '', name: '' }
+  dialogVisible.value = true
+}
+
+function openEditDialog(student) {
+  isEditing.value = true
+  editingId.value = student.id
+  dialogForm.value = { student_id: student.student_id, name: student.name }
+  dialogVisible.value = true
+}
+
+async function submitDialog() {
+  const { student_id, name } = dialogForm.value
+  if (!student_id.trim() || !name.trim()) {
+    ElMessage.warning('学号和姓名不能为空')
+    return
+  }
+  submitting.value = true
+  try {
+    if (isEditing.value) {
+      await api.put(`/admin/students/${editingId.value}`, { student_id: student_id.trim(), name: name.trim() })
+      ElMessage.success('学生信息已更新')
+    } else {
+      await api.post('/admin/students', { student_id: student_id.trim(), name: name.trim() })
+      ElMessage.success('学生添加成功，初始密码为学号')
+    }
+    dialogVisible.value = false
+    loadStudents()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || (isEditing.value ? '更新失败' : '添加失败'))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function deleteStudent(student) {
+  // 第一次确认
+  try {
+    await ElMessageBox.confirm(
+      `确认删除学生 ${student.name}（${student.student_id}）？该操作不可撤销，学生的所有提交记录也将一并删除。`,
+      '删除学生',
+      { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch {
+    return
+  }
+  // 第二次确认
+  try {
+    await ElMessageBox.confirm(
+      `请再次确认：你真的要永久删除 ${student.name}（${student.student_id}）吗？`,
+      '⚠️ 二次确认删除',
+      { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.delete(`/admin/students/${student.id}`)
+    ElMessage.success(`已删除学生 ${student.name}`)
+    loadStudents()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '删除失败')
   }
 }
 
@@ -272,6 +384,9 @@ onMounted(loadStudents)
 
 .action-bar {
   margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* 桌面/平板端表格视图 */
@@ -296,6 +411,14 @@ onMounted(loadStudents)
 .desktop-view :deep(.el-button--small) {
   padding: 5px 12px;
   font-size: 13px;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
 }
 
 /* 移动端卡片视图 */
@@ -380,6 +503,16 @@ onMounted(loadStudents)
 .card-actions {
   padding-top: 8px;
   border-top: 1px solid #ebeef5;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.card-actions :deep(.el-button) {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .empty-state {
@@ -506,18 +639,14 @@ onMounted(loadStudents)
 
   .action-bar {
     margin-bottom: 12px;
+    flex-wrap: nowrap;
   }
 
-  .gen-pwd-btn {
-    width: 100%;
-  }
-
-  .gen-pwd-btn .btn-text {
-    display: inline;
-  }
-
-  .gen-pwd-btn .btn-icon {
-    display: none;
+  .action-bar :deep(.el-button) {
+    flex: 1;
+    min-width: 0;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   /* 切换到卡片视图 */
@@ -578,11 +707,6 @@ onMounted(loadStudents)
 
   .student-id-badge {
     font-size: 12px;
-  }
-
-  .gen-pwd-btn {
-    font-size: 13px;
-    padding: 8px;
   }
 }
 </style>
