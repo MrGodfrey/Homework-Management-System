@@ -27,8 +27,12 @@
       <el-main class="main-content">
         <div class="action-bar">
           <el-button @click="generatePasswords" :loading="generating" class="gen-pwd-btn">
-            <span class="btn-text">批量生成密码并下载</span>
+            <span class="btn-text">批量重新生成密码</span>
             <span class="btn-icon">🔑</span>
+          </el-button>
+          <el-button @click="downloadPasswords" :loading="downloading" class="dl-pwd-btn" type="success">
+            <span class="btn-text">下载密码</span>
+            <span class="btn-icon">⬇️</span>
           </el-button>
         </div>
         
@@ -87,6 +91,7 @@ const router = useRouter()
 const students = ref([])
 const loading = ref(false)
 const generating = ref(false)
+const downloading = ref(false)
 
 async function loadStudents() {
   loading.value = true
@@ -117,7 +122,7 @@ async function generatePasswords() {
   try {
     await ElMessageBox.confirm(
       '你确定要这么做吗？每一位学生的密码都会被修改',
-      '批量生成密码',
+      '批量重新生成密码',
       { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
     )
   } catch (e) {
@@ -127,20 +132,32 @@ async function generatePasswords() {
   
   generating.value = true
   try {
-    const res = await api.post('/admin/students/generate-passwords', {}, { responseType: 'blob' })
+    const res = await api.post('/admin/students/generate-passwords')
+    ElMessage.success(res.data?.message || '密码批量重新生成成功')
+    // 刷新学生列表以显示新密码
+    await loadStudents()
+  } catch (e) {
+    console.error('生成密码失败:', e)
+    ElMessage.error(e.response?.data?.detail || '生成密码失败')
+  } finally {
+    generating.value = false
+  }
+}
+
+async function downloadPasswords() {
+  downloading.value = true
+  try {
+    const res = await api.get('/admin/students/download-passwords', { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const link = document.createElement('a')
     link.href = url
     link.download = 'passwords.csv'
     link.click()
     URL.revokeObjectURL(url)
-    ElMessage.success('密码已生成并开始下载')
-    // 刷新学生列表以显示新密码
-    await loadStudents()
+    ElMessage.success('密码下载成功')
   } catch (e) {
-    console.error('生成密码失败:', e)
-    // 尝试从 blob 响应中提取错误信息
-    let errorMsg = '生成密码失败'
+    console.error('下载密码失败:', e)
+    let errorMsg = '下载密码失败'
     if (e.response?.data instanceof Blob) {
       try {
         const text = await e.response.data.text()
@@ -152,7 +169,7 @@ async function generatePasswords() {
     }
     ElMessage.error(errorMsg)
   } finally {
-    generating.value = false
+    downloading.value = false
   }
 }
 

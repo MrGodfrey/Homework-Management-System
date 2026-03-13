@@ -101,12 +101,7 @@ def generate_passwords(db: Session = Depends(get_db)):
         db.commit()
         logger.info("数据库提交成功")
         
-        output.seek(0)
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=passwords.csv"}
-        )
+        return {"message": "密码批量重新生成成功"}
     except HTTPException:
         db.rollback()
         raise
@@ -116,6 +111,36 @@ def generate_passwords(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500, 
             detail=f"生成密码失败: {str(e)}"
+        )
+
+@router.get("/students/download-passwords")
+def download_passwords(db: Session = Depends(get_db)):
+    try:
+        students = db.query(Student).all()
+        if not students:
+            raise HTTPException(status_code=404, detail="没有学生记录")
+            
+        output = io.StringIO()
+        output.write('\ufeff')  # UTF-8 BOM for Excel
+        writer = csv.writer(output)
+        writer.writerow(["student_id", "name", "password"])
+        
+        for student in students:
+            writer.writerow([student.student_id, student.name, student.plain_password or ""])
+            
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=passwords.csv"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载密码失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"下载密码失败: {str(e)}"
         )
 
 @router.post("/students/{student_id}/reset-password")
