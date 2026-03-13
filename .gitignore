@@ -20,3 +20,4 @@ htmlcov/
 node_modules/
 .node-version
 
+passwords.csv

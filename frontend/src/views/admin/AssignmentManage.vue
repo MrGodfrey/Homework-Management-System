@@ -4,7 +4,10 @@
       <el-header height="60px" class="app-header">
         <el-button @click="$router.push('/admin/dashboard')">← 返回看板</el-button>
         <span class="title">作业管理</span>
-        <el-button type="primary" @click="openCreate">+ 新建作业</el-button>
+        <div class="header-actions">
+          <el-button type="success" @click="exportAllGradesCSV">导出全部成绩 CSV</el-button>
+          <el-button type="primary" @click="openCreate">+ 新建作业</el-button>
+        </div>
       </el-header>
       <el-main>
         <el-table :data="assignments" v-loading="loading" style="width:100%">
@@ -54,8 +57,21 @@
         <el-form-item label="允许迟交">
           <el-switch v-model="form.allow_late" />
         </el-form-item>
-        <el-form-item label="文件规则">
-          <el-input v-model="form.file_rules" placeholder="如 .pdf,.zip,.py（逗号分隔）" />
+        <el-form-item label="允许格式">
+          <el-checkbox-group v-model="selectedFormats">
+            <el-checkbox label=".pdf">PDF</el-checkbox>
+            <el-checkbox label=".docx">Word</el-checkbox>
+            <el-checkbox label=".md">Markdown</el-checkbox>
+            <el-checkbox label=".txt">文本</el-checkbox>
+            <el-checkbox label=".ipynb">Jupyter Notebook</el-checkbox>
+            <el-checkbox label=".py">Python</el-checkbox>
+            <el-checkbox label=".zip">压缩包</el-checkbox>
+          </el-checkbox-group>
+          <el-input 
+            v-model="form.file_rules" 
+            placeholder="或手动输入，逗号分隔" 
+            style="margin-top:8px"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -67,7 +83,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/utils/api'
@@ -79,6 +95,14 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
+const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
+
+// 监听勾选变化，自动更新 file_rules
+watch(selectedFormats, (newVal) => {
+  if (newVal.length > 0) {
+    form.file_rules = newVal.join(',')
+  }
+}, { deep: true })
 
 function formatDate(d) {
   if (!d) return '-'
@@ -87,7 +111,8 @@ function formatDate(d) {
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
+  Object.assign(form, { title: '', description: '', deadline: null, allow_late: false, file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py,.zip' })
+  selectedFormats.value = ['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip']
   dialogVisible.value = true
 }
 
@@ -100,6 +125,12 @@ function openEdit(row) {
     allow_late: row.allow_late,
     file_rules: row.file_rules || ''
   })
+  // 解析已有的 file_rules 设置到勾选框
+  if (row.file_rules) {
+    selectedFormats.value = row.file_rules.split(',').map(s => s.trim())
+  } else {
+    selectedFormats.value = []
+  }
   dialogVisible.value = true
 }
 
@@ -133,6 +164,22 @@ async function saveAssignment() {
   }
 }
 
+async function exportAllGradesCSV() {
+  try {
+    const res = await api.get('/admin/export_all_grades_csv', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'all_grades.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    ElMessage.success('CSV 导出成功')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '导出失败')
+  }
+}
+
 async function loadAssignments() {
   loading.value = true
   try {
@@ -143,6 +190,10 @@ async function loadAssignments() {
   } finally {
     loading.value = false
   }
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
 }
 
 onMounted(loadAssignments)

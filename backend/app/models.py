@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -35,6 +35,8 @@ class Submission(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     version_no = Column(Integer, nullable=False, default=1)
     submitted_at = Column(DateTime, default=datetime.utcnow)
+    score = Column(Float, nullable=True)  # 具体分数
+    is_graded = Column(Boolean, default=False, nullable=False)  # 是否已批改
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")
     files = relationship("SubmissionFile", back_populates="submission")

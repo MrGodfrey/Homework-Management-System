@@ -4,17 +4,27 @@ from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime
 import os
+import uuid
 
 from app.database import get_db
 from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog
 from app.dependencies import get_current_student
-from app.schemas import AssignmentBase
+from app.schemas import AssignmentBase, StudentMeOut
 from app.cos_utils import upload_file_to_cos, generate_presigned_url
+from app.config import settings
 
 router = APIRouter(
     prefix="/api/assignments",
     tags=["Student Assignments"]
 )
+
+@router.get("/me", response_model=StudentMeOut)
+def get_current_student_info(current_student: Student = Depends(get_current_student)):
+    """GET /api/assignments/me - 获取当前登录学生的信息"""
+    return {
+        "student_id": current_student.student_id,
+        "name": current_student.name
+    }
 
 @router.get("")
 def get_assignments(db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
@@ -115,8 +125,15 @@ async def submit_assignment(
     db.refresh(new_submission)
     
     # Upload and write files
+    # Determine environment prefix for COS storage isolation (DEV vs PROD)
+    env_prefix = "dev_env" if settings.ENV == "DEV" else "prod_env"
+    
     for (f, file_bytes) in file_bytes_list:
-        cos_key = f"{assign.id}/{current_student.id}/v{new_version_no}/{f.filename}"
+        # Generate unique key to prevent file overwrite:
+        # Format: {env_prefix}/submissions/{assignment_id}/{student_no}/{timestamp}_{uuid}_{filename}
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        cos_key = f"{env_prefix}/submissions/{assign.id}/{current_student.student_id}/{timestamp}_{unique_id}_{f.filename}"
         
         # Upload
         upload_file_to_cos(file_bytes, cos_key)

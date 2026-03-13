@@ -32,3 +32,12 @@ class AssignmentOut(AssignmentBase):
     class Config:
         from_attributes = True
 
+class StudentMeOut(BaseModel):
+    student_id: str
+    name: str
+    class Config:
+        from_attributes = True
+
+class GradeSubmission(BaseModel):
+    score: Optional[float] = None
+

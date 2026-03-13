@@ -6,9 +6,6 @@
         <el-form-item label="学号">
           <el-input v-model="form.student_id" placeholder="请输入学号" />
         </el-form-item>
-        <el-form-item label="姓名">
-          <el-input v-model="form.name" placeholder="请输入姓名" />
-        </el-form-item>
         <el-form-item label="密码">
           <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password />
         </el-form-item>
@@ -33,11 +30,11 @@ import api from '@/utils/api'
 const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
-const form = reactive({ student_id: '', name: '', password: '' })
+const form = reactive({ student_id: '', password: '' })
 
 async function handleLogin() {
-  if (!form.student_id || !form.name || !form.password) {
-    ElMessage.warning('请填写所有字段')
+  if (!form.student_id || !form.password) {
+    ElMessage.warning('请填写学号和密码')
     return
   }
   loading.value = true

@@ -3,7 +3,10 @@
     <el-container>
       <el-header height="60px" class="app-header">
         <span class="title">作业列表</span>
-        <el-button type="danger" plain size="small" @click="logout">退出登录</el-button>
+        <div class="user-info">
+          <span v-if="userInfo">{{ userInfo.name }} ({{ userInfo.student_id }})</span>
+          <el-button type="danger" plain size="small" @click="logout">退出登录</el-button>
+        </div>
       </el-header>
       <el-main>
         <el-table :data="assignments" v-loading="loading" style="width:100%">
@@ -48,6 +51,7 @@ import api from '@/utils/api'
 const router = useRouter()
 const auth = useAuthStore()
 const assignments = ref([])
+const userInfo = ref(null)
 const loading = ref(false)
 
 function formatDate(d) {
@@ -63,10 +67,15 @@ function logout() {
 onMounted(async () => {
   loading.value = true
   try {
+    // 获取用户信息
+    const userRes = await api.get('/assignments/me')
+    userInfo.value = userRes.data
+    
+    // 获取作业列表
     const res = await api.get('/assignments')
     assignments.value = res.data
   } catch {
-    ElMessage.error('加载作业列表失败')
+    ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
   }
@@ -78,6 +87,15 @@ onMounted(async () => {
 .app-header {
   display: flex;
   align-items: center;
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-info span {
+  color: #606266;
+  font-size: 14px;
+}
   justify-content: space-between;
   background: #fff;
   border-bottom: 1px solid #e4e7ed;

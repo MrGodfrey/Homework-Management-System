@@ -8,3 +8,4 @@ python-multipart
 cos-python-sdk-v5
 pydantic
 pydantic-settings
+alembic

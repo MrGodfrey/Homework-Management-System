@@ -10,7 +10,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class StudentLogin(BaseModel):
     student_id: str
-    name: str
     password: str
 
 class InstructorLogin(BaseModel):
@@ -33,7 +32,7 @@ def login_student(data: StudentLogin, db: Session = Depends(get_db)):
         tracker = {"attempts": 0, "locked_until": None}
         login_attempts[data.student_id] = tracker
 
-    student = db.query(Student).filter(Student.student_id == data.student_id, Student.name == data.name).first()
+    student = db.query(Student).filter(Student.student_id == data.student_id).first()
     
     if not student or not verify_password(data.password, student.hashed_password):
         tracker["attempts"] += 1
