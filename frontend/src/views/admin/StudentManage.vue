@@ -137,8 +137,20 @@ async function generatePasswords() {
     ElMessage.success('密码已生成并开始下载')
     // 刷新学生列表以显示新密码
     await loadStudents()
-  } catch {
-    ElMessage.error('生成密码失败')
+  } catch (e) {
+    console.error('生成密码失败:', e)
+    // 尝试从 blob 响应中提取错误信息
+    let errorMsg = '生成密码失败'
+    if (e.response?.data instanceof Blob) {
+      try {
+        const text = await e.response.data.text()
+        const json = JSON.parse(text)
+        errorMsg = json.detail || errorMsg
+      } catch {}
+    } else if (e.response?.data?.detail) {
+      errorMsg = e.response.data.detail
+    }
+    ElMessage.error(errorMsg)
   } finally {
     generating.value = false
   }
@@ -160,7 +172,11 @@ async function resetPassword(student) {
       { dangerouslyUseHTMLString: true, confirmButtonText: '已记录' }
     )
   } catch (e) {
-    if (e !== 'cancel' && e.message !== 'cancel') ElMessage.error('重置失败')
+    console.error('重置密码失败:', e)
+    if (e !== 'cancel' && e.message !== 'cancel') {
+      const errorMsg = e.response?.data?.detail || '重置失败'
+      ElMessage.error(errorMsg)
+    }
   }
 }
 

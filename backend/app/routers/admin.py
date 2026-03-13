@@ -3,6 +3,7 @@ import io
 import zipfile
 import secrets
 import string
+import logging
 from typing import List, Optional
 from datetime import datetime
 
@@ -18,6 +19,13 @@ from app.dependencies import get_current_instructor
 from app.auth import hash_password
 from app.cos_utils import client as cos_client, generate_presigned_url, upload_file_to_cos
 from app.config import settings
+
+# 配置日志
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 router = APIRouter(
     prefix="/api/admin",
@@ -63,37 +71,82 @@ def import_students(file: UploadFile = File(...), db: Session = Depends(get_db))
 
 @router.post("/students/generate-passwords")
 def generate_passwords(db: Session = Depends(get_db)):
-    students = db.query(Student).all()
-    output = io.StringIO()
-    output.write('\ufeff')  # UTF-8 BOM for Excel
-    writer = csv.writer(output)
-    writer.writerow(["student_id", "name", "password"])
-    
-    for student in students:
-        password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
-        student.hashed_password = hash_password(password)
-        student.plain_password = password  # 保存明文密码
-        writer.writerow([student.student_id, student.name, password])
+    try:
+        logger.info("开始批量生成密码")
+        students = db.query(Student).all()
+        logger.info(f"查询到 {len(students)} 个学生")
         
-    db.commit()
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=passwords.csv"}
-    )
+        if not students:
+            logger.warning("没有学生记录")
+            raise HTTPException(status_code=404, detail="没有学生记录")
+        
+        output = io.StringIO()
+        output.write('\ufeff')  # UTF-8 BOM for Excel
+        writer = csv.writer(output)
+        writer.writerow(["student_id", "name", "password"])
+        
+        updated_count = 0
+        for student in students:
+            try:
+                password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
+                student.hashed_password = hash_password(password)
+                student.plain_password = password  # 保存明文密码
+                writer.writerow([student.student_id, student.name, password])
+                updated_count += 1
+            except Exception as e:
+                logger.error(f"为学生 {student.student_id} 生成密码失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"为学生 {student.student_id} 生成密码失败: {str(e)}")
+        
+        logger.info(f"准备提交数据库更改，共 {updated_count} 个学生")
+        db.commit()
+        logger.info("数据库提交成功")
+        
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=passwords.csv"}
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"批量生成密码失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"生成密码失败: {str(e)}"
+        )
 
 @router.post("/students/{student_id}/reset-password")
 def reset_password(student_id: int, db: Session = Depends(get_db)):
-    student = db.query(Student).filter(Student.id == student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+    try:
+        logger.info(f"开始重置密码，学生ID: {student_id}")
+        student = db.query(Student).filter(Student.id == student_id).first()
+        if not student:
+            logger.warning(f"学生不存在，ID: {student_id}")
+            raise HTTPException(status_code=404, detail="Student not found")
         
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
-    student.hashed_password = hash_password(password)
-    student.plain_password = password  # 保存明文密码
-    db.commit()
-    return {"message": "Password reset successful", "new_password": password}
+        logger.info(f"找到学生: {student.name} ({student.student_id})")
+        password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
+        student.hashed_password = hash_password(password)
+        student.plain_password = password  # 保存明文密码
+        
+        logger.info(f"准备提交数据库更改")
+        db.commit()
+        logger.info(f"密码重置成功: {student.name} ({student.student_id})")
+        
+        return {"message": "Password reset successful", "new_password": password}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"重置密码失败，学生ID {student_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"重置密码失败: {str(e)}"
+        )
 
 @router.get("/assignments", response_model=List[AssignmentOut])
 def get_assignments(db: Session = Depends(get_db)):
