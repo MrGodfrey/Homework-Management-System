@@ -154,8 +154,21 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveAssignment">保存</el-button>
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <div>
+            <el-button 
+              v-if="editingId" 
+              type="danger" 
+              plain
+              :loading="deleting" 
+              @click="handleDelete"
+            >删除作业</el-button>
+          </div>
+          <div>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="saveAssignment">保存</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -164,7 +177,7 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/utils/api'
 
 const router = useRouter()
@@ -172,6 +185,7 @@ const assignments = ref([])
 const totalStudents = ref(0)
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
@@ -318,6 +332,69 @@ async function loadTotalStudents() {
     totalStudents.value = res.data.length
   } catch {
     // 静默失败，不影响主要功能
+  }
+}
+
+async function handleDelete() {
+  if (!editingId.value) return
+  
+  try {
+    // 第一次确认
+    await ElMessageBox.confirm(
+      '你确定要删除吗？',
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    deleting.value = true
+    
+    // 第一次尝试删除（不带force参数）
+    const res = await api.delete(`/admin/assignments/${editingId.value}`)
+    
+    // 检查是否需要再次确认
+    if (res.data.status === 'confirm_required') {
+      deleting.value = false
+      
+      // 第二次确认（提示已有学生提交）
+      await ElMessageBox.confirm(
+        `已有学生上传作业，请问您确认删除吗？`,
+        '删除确认',
+        {
+          confirmButtonText: '确认删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+          distinguishCancelAndClose: true
+        }
+      )
+      
+      deleting.value = true
+      
+      // 强制删除
+      const forceRes = await api.delete(`/admin/assignments/${editingId.value}?force=true`)
+      
+      if (forceRes.data.status === 'success') {
+        ElMessage.success(forceRes.data.message || '删除成功')
+        dialogVisible.value = false
+        loadAssignments()
+      }
+    } else if (res.data.status === 'success') {
+      ElMessage.success(res.data.message || '删除成功')
+      dialogVisible.value = false
+      loadAssignments()
+    }
+  } catch (error) {
+    // 用户取消操作
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    // API错误
+    ElMessage.error(error.response?.data?.detail || '删除失败')
+  } finally {
+    deleting.value = false
   }
 }
 </script>

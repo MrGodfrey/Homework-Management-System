@@ -132,6 +132,69 @@ def update_assignment(assignment_id: int, assignment: AssignmentUpdate, db: Sess
     db.refresh(db_assignment)
     return db_assignment
 
+@router.delete("/assignments/{assignment_id}")
+def delete_assignment(assignment_id: int, force: bool = False, db: Session = Depends(get_db)):
+    """
+    删除作业接口
+    - assignment_id: 作业ID
+    - force: 是否强制删除（即使有学生提交也删除）
+    """
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # 检查是否有学生提交
+    submission_count = db.query(Submission).filter(
+        Submission.assignment_id == assignment_id
+    ).count()
+    
+    # 如果有提交且不是强制删除，返回需要确认的状态
+    if submission_count > 0 and not force:
+        return {
+            "status": "confirm_required",
+            "message": "已有学生上传作业，请问您确认删除吗？",
+            "submission_count": submission_count
+        }
+    
+    # 获取所有相关的提交记录和文件
+    submissions = db.query(Submission).filter(
+        Submission.assignment_id == assignment_id
+    ).all()
+    
+    # 收集所有需要从COS删除的文件key
+    cos_keys_to_delete = []
+    for submission in submissions:
+        for file in submission.files:
+            cos_keys_to_delete.append(file.cos_key)
+    
+    # 从COS删除文件
+    for cos_key in cos_keys_to_delete:
+        try:
+            cos_client.delete_object(
+                Bucket=settings.COS_BUCKET,
+                Key=cos_key
+            )
+        except Exception as e:
+            print(f"Failed to delete {cos_key} from COS: {e}")
+            # 继续删除其他文件，不因单个文件失败而中断
+    
+    # 删除数据库中的记录（先删除关联的文件记录，再删除提交记录）
+    for submission in submissions:
+        # 删除提交关联的文件记录
+        db.query(SubmissionFile).filter(SubmissionFile.submission_id == submission.id).delete()
+        # 删除提交记录
+        db.delete(submission)
+    
+    # 最后删除作业本身
+    db.delete(assignment)
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": "作业删除成功",
+        "deleted_files": len(cos_keys_to_delete)
+    }
+
 @router.get("/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
     students = db.query(Student).all()
