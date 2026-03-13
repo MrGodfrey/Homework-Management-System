@@ -43,6 +43,7 @@ COS_BUCKET=your_bucket_name-1250000000
    ```
    > 启动后，可以访问 http://127.0.0.1:8000/docs 查看自动生成的 API 文档 (Swagger UI) 并直接测试接口。
  > 可能正好命令强行删掉这个实例 pgrep -af uvicorn && pkill -f uvicorn
+ > 或者可以更换一个端口号，如 `--port 8001`。
 
 
 关于“直接测试接口”的说明
