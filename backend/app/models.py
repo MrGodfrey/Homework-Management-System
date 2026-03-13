@@ -15,6 +15,7 @@ class Student(Base):
     student_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
+    plain_password = Column(String, nullable=True)  # 明文密码，用于管理员查看
     submissions = relationship("Submission", back_populates="student")
 
 class Assignment(Base):

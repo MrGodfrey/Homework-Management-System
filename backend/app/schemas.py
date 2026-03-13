@@ -23,6 +23,7 @@ class AssignmentUpdate(AssignmentBase):
 
 class StudentOut(StudentBase):
     id: int
+    password: Optional[str] = None  # 明文密码
     class Config:
         from_attributes = True
 

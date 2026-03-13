@@ -38,6 +38,7 @@
             <el-table-column prop="id" label="ID" min-width="50" />
             <el-table-column prop="student_id" label="学号" min-width="120" />
             <el-table-column prop="name" label="姓名" min-width="100" />
+            <el-table-column prop="password" label="密码" min-width="120" />
             <el-table-column label="操作" min-width="100" align="center">
               <template #default="{ row }">
                 <el-button size="small" type="warning" @click="resetPassword(row)">重置密码</el-button>
@@ -55,6 +56,10 @@
                 <span class="student-id-badge">{{ student.student_id }}</span>
               </div>
               <span class="student-id-label">#{{ student.id }}</span>
+            </div>
+            <div class="student-password">
+              <span class="password-label">密码：</span>
+              <span class="password-value">{{ student.password }}</span>
             </div>
             <div class="card-actions">
               <el-button size="small" type="warning" @click="resetPassword(student)" style="width: 100%;">
@@ -130,6 +135,8 @@ async function generatePasswords() {
     link.click()
     URL.revokeObjectURL(url)
     ElMessage.success('密码已生成并开始下载')
+    // 刷新学生列表以显示新密码
+    await loadStudents()
   } catch {
     ElMessage.error('生成密码失败')
   } finally {
@@ -145,6 +152,8 @@ async function resetPassword(student) {
       { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
     )
     const res = await api.post(`/admin/students/${student.id}/reset-password`)
+    // 立即更新本地显示的密码
+    student.password = res.data.new_password
     ElMessageBox.alert(
       `新密码：<b>${res.data.new_password}</b>`,
       `${student.name} 的新密码`,
@@ -312,6 +321,27 @@ onMounted(loadStudents)
   padding: 2px 8px;
   border-radius: 4px;
   flex-shrink: 0;
+}
+
+.student-password {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.password-label {
+  color: #606266;
+  font-weight: 500;
+  margin-right: 8px;
+}
+
+.password-value {
+  color: #409eff;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  letter-spacing: 1px;
 }
 
 .card-actions {

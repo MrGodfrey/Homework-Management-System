@@ -27,7 +27,17 @@ router = APIRouter(
 
 @router.get("/students", response_model=List[StudentOut])
 def get_students(db: Session = Depends(get_db)):
-    return db.query(Student).all()
+    students = db.query(Student).all()
+    # 将 plain_password 映射到 password 字段
+    result = []
+    for student in students:
+        result.append({
+            "id": student.id,
+            "student_id": student.student_id,
+            "name": student.name,
+            "password": student.plain_password or student.student_id  # 如果没有明文密码，显示学号
+        })
+    return result
 
 @router.post("/students/import")
 def import_students(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -40,7 +50,12 @@ def import_students(file: UploadFile = File(...), db: Session = Depends(get_db))
         if student_id and name:
             exists = db.query(Student).filter(Student.student_id == student_id).first()
             if not exists:
-                new_student = Student(student_id=student_id, name=name, hashed_password=hash_password(student_id))
+                new_student = Student(
+                    student_id=student_id, 
+                    name=name, 
+                    hashed_password=hash_password(student_id),
+                    plain_password=student_id  # 默认密码为学号
+                )
                 db.add(new_student)
                 added += 1
     db.commit()
@@ -57,6 +72,7 @@ def generate_passwords(db: Session = Depends(get_db)):
     for student in students:
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
         student.hashed_password = hash_password(password)
+        student.plain_password = password  # 保存明文密码
         writer.writerow([student.student_id, student.name, password])
         
     db.commit()
@@ -75,6 +91,7 @@ def reset_password(student_id: int, db: Session = Depends(get_db)):
         
     password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))
     student.hashed_password = hash_password(password)
+    student.plain_password = password  # 保存明文密码
     db.commit()
     return {"message": "Password reset successful", "new_password": password}
 
