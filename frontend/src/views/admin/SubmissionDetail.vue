@@ -29,32 +29,55 @@
       <el-main class="main-content">
         <!-- 桌面/平板端表格视图 -->
         <div class="desktop-view">
-          <el-table :data="submissions" v-loading="loading" style="width:100%">
-            <el-table-column prop="id" label="ID" min-width="70" />
-            <el-table-column prop="student_id" label="学号" min-width="110" />
-            <el-table-column prop="student_name" label="姓名" min-width="90" />
-            <el-table-column label="版本" min-width="60" align="center">
-              <template #default="{ row }">v{{ row.version }}</template>
-            </el-table-column>
-            <el-table-column label="提交时间" min-width="140">
-              <template #default="{ row }">{{ formatDate(row.time) }}</template>
-            </el-table-column>
-            <el-table-column label="分数" min-width="90" align="center">
+          <el-table :data="groupedSubmissions" v-loading="loading" style="width:100%">
+            <el-table-column type="expand">
               <template #default="{ row }">
-                <el-tag v-if="row.is_graded" type="success">{{ row.score }}分</el-tag>
-                <el-tag v-else type="info">待评分</el-tag>
+                <div class="expand-content">
+                  <el-table :data="row.submissions" style="width: 100%">
+                    <el-table-column prop="id" label="ID" width="80" />
+                    <el-table-column label="版本" width="80" align="center">
+                      <template #default="{ row: sub }">v{{ sub.version }}</template>
+                    </el-table-column>
+                    <el-table-column label="提交时间" min-width="150">
+                      <template #default="{ row: sub }">{{ formatDate(sub.time) }}</template>
+                    </el-table-column>
+                    <el-table-column label="分数" width="120" align="center">
+                      <template #default="{ row: sub }">
+                        <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
+                        <el-tag v-else type="info" size="small">待评分</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="180" align="center">
+                      <template #default="{ row: sub }">
+                        <div class="action-buttons">
+                          <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">
+                            下载
+                          </el-button>
+                          <el-button size="small" type="primary" @click="openGradeDialog(sub)">
+                            评分
+                          </el-button>
+                        </div>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="140" align="center">
+            <el-table-column prop="student_id" label="学号" min-width="110" />
+            <el-table-column prop="student_name" label="姓名" min-width="90" />
+            <el-table-column label="提交次数" min-width="90" align="center">
+              <template #default="{ row }">{{ row.submissions.length }} 次</template>
+            </el-table-column>
+            <el-table-column label="最新版本" min-width="80" align="center">
+              <template #default="{ row }">v{{ row.latestVersion }}</template>
+            </el-table-column>
+            <el-table-column label="最新时间" min-width="140">
+              <template #default="{ row }">{{ formatDate(row.latestTime) }}</template>
+            </el-table-column>
+            <el-table-column label="最新分数" min-width="120" align="center">
               <template #default="{ row }">
-                <div class="action-buttons">
-                  <el-button size="small" @click="downloadSingle(row)" :loading="downloadingSingle === row.id">
-                    下载
-                  </el-button>
-                  <el-button size="small" type="primary" @click="openGradeDialog(row)">
-                    评分
-                  </el-button>
-                </div>
+                <el-tag v-if="row.latestGraded" type="success" size="small">{{ row.latestScore }}分</el-tag>
+                <el-tag v-else type="warning" size="small">需更新</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -62,32 +85,33 @@
 
         <!-- 移动端卡片视图 -->
         <div class="mobile-view" v-loading="loading">
-          <div class="submission-card" v-for="sub in submissions" :key="sub.id">
+          <div class="submission-card" v-for="group in groupedSubmissions" :key="group.student_id">
             <div class="card-header">
               <div class="student-info">
-                <h3 class="student-name">{{ sub.student_name }}</h3>
-                <span class="student-id">{{ sub.student_id }}</span>
+                <h3 class="student-name">{{ group.student_name }}</h3>
+                <span class="student-id">{{ group.student_id }}</span>
               </div>
-              <div class="version-badge">v{{ sub.version }}</div>
+              <div class="version-count">{{ group.submissions.length }} 次提交</div>
             </div>
-            <div class="card-body">
-              <div class="info-row">
-                <span class="label">提交时间:</span>
-                <span class="value">{{ formatDate(sub.time) }}</span>
+            
+            <!-- 多个版本列表 -->
+            <div class="versions-list">
+              <div class="version-item" v-for="sub in group.submissions" :key="sub.id">
+                <div class="version-header">
+                  <div class="version-badge">v{{ sub.version }}</div>
+                  <div class="version-time">{{ formatDate(sub.time) }}</div>
+                  <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
+                  <el-tag v-else type="info" size="small">待评分</el-tag>
+                </div>
+                <div class="version-actions">
+                  <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id" style="flex: 1;">
+                    下载
+                  </el-button>
+                  <el-button size="small" type="primary" @click="openGradeDialog(sub)" style="flex: 1;">
+                    评分
+                  </el-button>
+                </div>
               </div>
-              <div class="info-row">
-                <span class="label">分数:</span>
-                <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
-                <el-tag v-else type="info" size="small">待评分</el-tag>
-              </div>
-            </div>
-            <div class="card-actions">
-              <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id" style="flex: 1;">
-                下载
-              </el-button>
-              <el-button size="small" type="primary" @click="openGradeDialog(sub)" style="flex: 1;">
-                评分
-              </el-button>
             </div>
           </div>
         </div>
@@ -143,6 +167,47 @@ const gradeDialogVisible = ref(false)
 const grading = ref(false)
 const currentStudent = ref(null)
 const gradeForm = reactive({ score: 85 })
+
+// 按学生分组的提交记录
+const groupedSubmissions = computed(() => {
+  const groups = {}
+  
+  // 按学生ID分组
+  submissions.value.forEach(sub => {
+    const key = `${sub.student_id}_${sub.student_name}`
+    if (!groups[key]) {
+      groups[key] = {
+        student_id: sub.student_id,
+        student_name: sub.student_name,
+        submissions: []
+      }
+    }
+    groups[key].submissions.push(sub)
+  })
+  
+  // 转换为数组并添加统计信息
+  return Object.values(groups).map(group => {
+    // 按版本号降序排序
+    group.submissions.sort((a, b) => b.version - a.version)
+    
+    const latest = group.submissions[0]
+    const allGraded = group.submissions.every(s => s.is_graded)
+    const someGraded = group.submissions.some(s => s.is_graded)
+    
+    return {
+      ...group,
+      latestVersion: latest.version,
+      latestTime: latest.time,
+      latestGraded: latest.is_graded,
+      latestScore: latest.score,
+      allGraded,
+      someGraded
+    }
+  }).sort((a, b) => {
+    // 按学号排序
+    return a.student_id.localeCompare(b.student_id)
+  })
+})
 
 // 响应式窗口尺寸
 const windowWidth = ref(window.innerWidth)
@@ -323,6 +388,27 @@ onMounted(loadSubmissions)
 .desktop-view :deep(.el-table__cell) { padding-left: 6px; padding-right: 6px; }
 
 .mobile-view { display: none; }
+
+/* 桌面端展开行样式 */
+.expand-content {
+  padding: 12px 20px;
+  background: #fafafa;
+}
+
+.expand-content :deep(.el-table) {
+  background: transparent;
+  font-size: 13px;
+}
+
+.expand-content :deep(.el-table::before) {
+  display: none;
+}
+
+.expand-content :deep(.el-table th) {
+  background: #f0f0f0;
+}
+
+/* 移动端卡片样式 */
 .submission-card {
   background: #fff;
   border-radius: 8px;
@@ -344,7 +430,50 @@ onMounted(loadSubmissions)
 .student-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
 .student-name { font-size: 16px; font-weight: 600; color: #303133; margin: 0; }
 .student-id { font-size: 13px; color: #606266; background: #f0f0f0; padding: 2px 10px; border-radius: 12px; }
-.version-badge { font-size: 13px; color: #409eff; background: #ecf5ff; padding: 4px 12px; border-radius: 12px; font-weight: 500; }
+.version-count { font-size: 13px; color: #67c23a; background: #f0f9ff; padding: 4px 12px; border-radius: 12px; font-weight: 500; }
+
+/* 版本列表 */
+.versions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.version-item {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid #e8e8e8;
+}
+
+.version-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.version-badge {
+  font-size: 12px;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.version-time {
+  font-size: 12px;
+  color: #606266;
+  flex: 1;
+}
+
+.version-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
 
 .card-body { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .info-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
