@@ -57,14 +57,54 @@ async function handleLogin() {
   align-items: center;
   min-height: 100vh;
   background: #f5f7fa;
+  padding: 16px;
 }
 .login-card {
-  width: 400px;
-  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 24px;
 }
 h2 {
   text-align: center;
   margin-bottom: 24px;
   color: #303133;
+  font-size: 24px;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 12px;
+  }
+  .login-card {
+    padding: 24px 20px;
+  }
+  h2 {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+  :deep(.el-form-item__label) {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 576px) {
+  .login-container {
+    padding: 8px;
+  }
+  .login-card {
+    padding: 20px 16px;
+  }
+  h2 {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  :deep(.el-form-item__label) {
+    width: 70px !important;
+    font-size: 14px;
+  }
+  :deep(.el-button) {
+    padding: 12px 20px;
+  }
 }
 </style>

@@ -29,6 +29,8 @@ class StudentOut(StudentBase):
 class AssignmentOut(AssignmentBase):
     id: int
     created_at: datetime
+    submitted_count: Optional[int] = 0  # 已提交人数
+    graded_count: Optional[int] = 0  # 已评分人数
     class Config:
         from_attributes = True
 

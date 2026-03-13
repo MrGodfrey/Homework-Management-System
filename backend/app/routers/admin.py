@@ -80,7 +80,36 @@ def reset_password(student_id: int, db: Session = Depends(get_db)):
 
 @router.get("/assignments", response_model=List[AssignmentOut])
 def get_assignments(db: Session = Depends(get_db)):
-    return db.query(Assignment).all()
+    assignments = db.query(Assignment).all()
+    result = []
+    
+    for assignment in assignments:
+        # 统计不同学生的提交数（有提交的学生人数）
+        submitted_count = db.query(Submission.student_id).filter(
+            Submission.assignment_id == assignment.id
+        ).distinct().count()
+        
+        # 统计已评分的学生人数
+        graded_count = db.query(Submission.student_id).filter(
+            Submission.assignment_id == assignment.id,
+            Submission.is_graded == True
+        ).distinct().count()
+        
+        # 将作业对象转为字典并添加统计字段
+        assignment_dict = {
+            "id": assignment.id,
+            "title": assignment.title,
+            "description": assignment.description,
+            "deadline": assignment.deadline,
+            "allow_late": assignment.allow_late,
+            "file_rules": assignment.file_rules,
+            "created_at": assignment.created_at,
+            "submitted_count": submitted_count,
+            "graded_count": graded_count
+        }
+        result.append(assignment_dict)
+    
+    return result
 
 @router.post("/assignments", response_model=AssignmentOut)
 def create_assignment(assignment: AssignmentCreate, db: Session = Depends(get_db)):
