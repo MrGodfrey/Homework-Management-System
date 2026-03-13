@@ -41,6 +41,19 @@ class StudentMeOut(BaseModel):
     class Config:
         from_attributes = True
 
+class AssignmentFileOut(BaseModel):
+    id: int
+    filename: str
+    cos_key: str
+    uploaded_at: datetime
+    class Config:
+        from_attributes = True
+
+class AssignmentOutWithFiles(AssignmentOut):
+    attachment_files: List['AssignmentFileOut'] = []
+    class Config:
+        from_attributes = True
+
 class GradeSubmission(BaseModel):
     score: Optional[float] = None
 

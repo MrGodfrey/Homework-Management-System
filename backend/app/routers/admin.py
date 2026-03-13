@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor
-from app.schemas import StudentOut, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission
+from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor, AssignmentFile
+from app.schemas import StudentOut, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut
 from app.dependencies import get_current_instructor
 from app.auth import hash_password
-from app.cos_utils import client as cos_client, generate_presigned_url
+from app.cos_utils import client as cos_client, generate_presigned_url, upload_file_to_cos
 from app.config import settings
 
 router = APIRouter(
@@ -149,6 +149,141 @@ def update_assignment(assignment_id: int, assignment: AssignmentUpdate, db: Sess
     db.refresh(db_assignment)
     return db_assignment
 
+@router.post("/assignments/{assignment_id}/upload-attachment")
+async def upload_assignment_attachment(
+    assignment_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """上传作业附件文件"""
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    try:
+        # 读取文件内容
+        file_bytes = await file.read()
+        
+        # 生成 COS key
+        cos_key = f"assignments/{assignment_id}/attachments/{datetime.utcnow().timestamp()}_{file.filename}"
+        
+        # 上传到 COS
+        upload_file_to_cos(file_bytes, cos_key)
+        
+        # 保存到数据库
+        assignment_file = AssignmentFile(
+            assignment_id=assignment_id,
+            filename=file.filename,
+            cos_key=cos_key
+        )
+        db.add(assignment_file)
+        db.commit()
+        db.refresh(assignment_file)
+        
+        return {
+            "id": assignment_file.id,
+            "filename": assignment_file.filename,
+            "cos_key": assignment_file.cos_key,
+            "uploaded_at": assignment_file.uploaded_at
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+@router.delete("/assignments/{assignment_id}/attachments/{file_id}")
+def delete_assignment_attachment(
+    assignment_id: int,
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """删除作业附件文件"""
+    assignment_file = db.query(AssignmentFile).filter(
+        AssignmentFile.id == file_id,
+        AssignmentFile.assignment_id == assignment_id
+    ).first()
+    
+    if not assignment_file:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # 从 COS 删除文件
+    try:
+        cos_client.delete_object(
+            Bucket=settings.COS_BUCKET,
+            Key=assignment_file.cos_key
+        )
+    except Exception as e:
+        print(f"Failed to delete {assignment_file.cos_key} from COS: {e}")
+    
+    # 从数据库删除记录
+    db.delete(assignment_file)
+    db.commit()
+    
+    return {"message": "Attachment deleted successfully"}
+
+@router.get("/assignments/{assignment_id}/attachments/{file_id}/download")
+def get_assignment_attachment_url(
+    assignment_id: int,
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取作业附件的下载 URL"""
+    assignment_file = db.query(AssignmentFile).filter(
+        AssignmentFile.id == file_id,
+        AssignmentFile.assignment_id == assignment_id
+    ).first()
+    
+    if not assignment_file:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # 生成临时下载 URL
+    download_url = generate_presigned_url(assignment_file.cos_key, expires=3600)
+    
+    return {
+        "filename": assignment_file.filename,
+        "download_url": download_url
+    }
+
+@router.get("/assignments/{assignment_id}/with-files", response_model=AssignmentOutWithFiles)
+def get_assignment_with_files(assignment_id: int, db: Session = Depends(get_db)):
+    """获取作业信息及其附件列表"""
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # 统计不同学生的提交数（有提交的学生人数）
+    submitted_count = db.query(Submission.student_id).filter(
+        Submission.assignment_id == assignment.id
+    ).distinct().count()
+    
+    # 统计已评分的学生人数
+    graded_count = db.query(Submission.student_id).filter(
+        Submission.assignment_id == assignment.id,
+        Submission.is_graded == True
+    ).distinct().count()
+    
+    # 构造返回对象
+    result = {
+        "id": assignment.id,
+        "title": assignment.title,
+        "description": assignment.description,
+        "deadline": assignment.deadline,
+        "allow_late": assignment.allow_late,
+        "file_rules": assignment.file_rules,
+        "created_at": assignment.created_at,
+        "submitted_count": submitted_count,
+        "graded_count": graded_count,
+        "attachment_files": [
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "cos_key": f.cos_key,
+                "uploaded_at": f.uploaded_at
+            }
+            for f in assignment.attachment_files
+        ]
+    }
+    
+    return result
+
 @router.delete("/assignments/{assignment_id}")
 def delete_assignment(assignment_id: int, force: bool = False, db: Session = Depends(get_db)):
     """
@@ -184,6 +319,13 @@ def delete_assignment(assignment_id: int, force: bool = False, db: Session = Dep
         for file in submission.files:
             cos_keys_to_delete.append(file.cos_key)
     
+    # 收集作业附件文件
+    assignment_files = db.query(AssignmentFile).filter(
+        AssignmentFile.assignment_id == assignment_id
+    ).all()
+    for file in assignment_files:
+        cos_keys_to_delete.append(file.cos_key)
+    
     # 从COS删除文件
     for cos_key in cos_keys_to_delete:
         try:
@@ -201,6 +343,9 @@ def delete_assignment(assignment_id: int, force: bool = False, db: Session = Dep
         db.query(SubmissionFile).filter(SubmissionFile.submission_id == submission.id).delete()
         # 删除提交记录
         db.delete(submission)
+    
+    # 删除作业附件记录
+    db.query(AssignmentFile).filter(AssignmentFile.assignment_id == assignment_id).delete()
     
     # 最后删除作业本身
     db.delete(assignment)

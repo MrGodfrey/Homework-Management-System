@@ -34,6 +34,24 @@
             </el-descriptions-item>
           </el-descriptions>
 
+          <!-- 作业附件区域 -->
+          <div v-if="attachments && attachments.length > 0" class="attachments-section">
+            <h4>作业附件</h4>
+            <div class="attachments-list">
+              <el-button 
+                v-for="file in attachments" 
+                :key="file.id"
+                size="small"
+                type="success"
+                plain
+                @click="downloadAttachment(file.id)"
+                class="attachment-btn"
+              >
+                📎 {{ file.filename }}
+              </el-button>
+            </div>
+          </div>
+
           <div class="upload-section">
             <h4>上传文件</h4>
             <el-upload
@@ -79,6 +97,7 @@ import api from '@/utils/api'
 const route = useRoute()
 const router = useRouter()
 const assignment = ref(null)
+const attachments = ref([])
 const loading = ref(false)
 const uploading = ref(false)
 const progress = ref(0)
@@ -160,10 +179,23 @@ async function loadAssignment() {
   try {
     const res = await api.get(`/assignments/${route.params.id}`)
     assignment.value = res.data
+    
+    // 加载附件
+    const attachmentsRes = await api.get(`/assignments/${route.params.id}/attachments`)
+    attachments.value = attachmentsRes.data
   } catch {
     ElMessage.error('加载作业详情失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function downloadAttachment(fileId) {
+  try {
+    const res = await api.get(`/assignments/${route.params.id}/attachments/${fileId}/download`)
+    window.open(res.data.download_url, '_blank')
+  } catch (e) {
+    ElMessage.error('获取下载链接失败')
   }
 }
 </script>
@@ -230,6 +262,35 @@ async function loadAssignment() {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.6;
+}
+
+/* 作业附件区域 */
+.attachments-section {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #f9fafc;
+  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+}
+
+.attachments-section h4 {
+  color: #303133;
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment-btn {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .upload-section {

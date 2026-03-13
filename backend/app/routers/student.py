@@ -7,7 +7,7 @@ import os
 import uuid
 
 from app.database import get_db
-from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog
+from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, AssignmentFile
 from app.dependencies import get_current_student
 from app.schemas import AssignmentBase, StudentMeOut
 from app.cos_utils import upload_file_to_cos, generate_presigned_url
@@ -65,6 +65,59 @@ def get_assignment_detail(id: int, db: Session = Depends(get_db), current_studen
         "deadline": assign.deadline,
         "allow_late": assign.allow_late,
         "file_rules": assign.file_rules
+    }
+
+@router.get("/{id}/attachments")
+def get_assignment_attachments(id: int, db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+    """GET /api/assignments/{id}/attachments - 获取作业附件列表（学生端）"""
+    assign = db.query(Assignment).filter(Assignment.id == id).first()
+    if not assign:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # 获取作业附件
+    attachment_files = db.query(AssignmentFile).filter(
+        AssignmentFile.assignment_id == id
+    ).all()
+    
+    result = []
+    for file in attachment_files:
+        result.append({
+            "id": file.id,
+            "filename": file.filename,
+            "cos_key": file.cos_key,
+            "uploaded_at": file.uploaded_at
+        })
+    
+    return result
+
+@router.get("/{assignment_id}/attachments/{file_id}/download")
+def get_attachment_download_url(
+    assignment_id: int, 
+    file_id: int, 
+    db: Session = Depends(get_db), 
+    current_student: Student = Depends(get_current_student)
+):
+    """GET /api/assignments/{assignment_id}/attachments/{file_id}/download - 获取附件下载链接（学生端）"""
+    # 验证作业是否存在
+    assign = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assign:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # 获取附件
+    attachment_file = db.query(AssignmentFile).filter(
+        AssignmentFile.id == file_id,
+        AssignmentFile.assignment_id == assignment_id
+    ).first()
+    
+    if not attachment_file:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # 生成临时下载 URL
+    download_url = generate_presigned_url(attachment_file.cos_key, expires=3600)
+    
+    return {
+        "filename": attachment_file.filename,
+        "download_url": download_url
     }
 
 @router.post("/{id}/submit")

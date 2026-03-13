@@ -152,6 +152,39 @@
             style="margin-top:8px"
           />
         </el-form-item>
+        <el-form-item label="作业附件" v-if="editingId">
+          <div style="width: 100%;">
+            <el-upload
+              :auto-upload="false"
+              :on-change="handleAttachmentChange"
+              :show-file-list="false"
+              accept="*"
+              style="margin-bottom: 10px;"
+            >
+              <el-button size="small" type="primary" :loading="uploadingAttachment">
+                <span v-if="!uploadingAttachment">上传附件</span>
+                <span v-else>上传中...</span>
+              </el-button>
+            </el-upload>
+            <div v-if="attachmentFiles.length > 0" class="attachment-list">
+              <div v-for="file in attachmentFiles" :key="file.id" class="attachment-item">
+                <span class="file-name">📎 {{ file.filename }}</span>
+                <div class="file-actions">
+                  <el-button size="small" link @click="downloadAttachment(file)">下载</el-button>
+                  <el-button size="small" link type="danger" @click="deleteAttachment(file.id)">删除</el-button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="no-attachments">暂无附件</div>
+          </div>
+        </el-form-item>
+        <el-alert 
+          v-if="!editingId" 
+          title="提示：请先保存作业后，再上传附件文件" 
+          type="info" 
+          :closable="false"
+          style="margin-bottom: 10px;"
+        />
       </el-form>
       <template #footer>
         <div style="display: flex; justify-content: space-between; width: 100%;">
@@ -190,6 +223,8 @@ const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
 const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
+const attachmentFiles = ref([])  // 作业附件列表
+const uploadingAttachment = ref(false)  // 是否正在上传附件
 
 // 响应式窗口尺寸
 const windowWidth = ref(window.innerWidth)
@@ -245,12 +280,13 @@ function formatDate(d) {
 
 function openCreate() {
   editingId.value = null
+  attachmentFiles.value = []
   Object.assign(form, { title: '', description: '', deadline: null, allow_late: false, file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py,.zip' })
   selectedFormats.value = ['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip']
   dialogVisible.value = true
 }
 
-function openEdit(row) {
+async function openEdit(row) {
   editingId.value = row.id
   Object.assign(form, {
     title: row.title,
@@ -265,7 +301,74 @@ function openEdit(row) {
   } else {
     selectedFormats.value = []
   }
+  
+  // 加载附件列表
+  await loadAttachments(row.id)
+  
   dialogVisible.value = true
+}
+
+async function loadAttachments(assignmentId) {
+  try {
+    const res = await api.get(`/admin/assignments/${assignmentId}/with-files`)
+    attachmentFiles.value = res.data.attachment_files || []
+  } catch (e) {
+    console.error('Failed to load attachments:', e)
+    attachmentFiles.value = []
+  }
+}
+
+async function handleAttachmentChange(file) {
+  if (!editingId.value) {
+    ElMessage.warning('请先保存作业')
+    return
+  }
+  
+  uploadingAttachment.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file.raw)
+    
+    const res = await api.post(`/admin/assignments/${editingId.value}/upload-attachment`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    
+    attachmentFiles.value.push(res.data)
+    ElMessage.success('附件上传成功')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '上传失败')
+  } finally {
+    uploadingAttachment.value = false
+  }
+}
+
+async function downloadAttachment(file) {
+  try {
+    const res = await api.get(`/admin/assignments/${editingId.value}/attachments/${file.id}/download`)
+    window.open(res.data.download_url, '_blank')
+  } catch (e) {
+    ElMessage.error('获取下载链接失败')
+  }
+}
+
+async function deleteAttachment(fileId) {
+  try {
+    await ElMessageBox.confirm('确定删除此附件吗？', '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await api.delete(`/admin/assignments/${editingId.value}/attachments/${fileId}`)
+    attachmentFiles.value = attachmentFiles.value.filter(f => f.id !== fileId)
+    ElMessage.success('附件删除成功')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('删除失败')
+    }
+  }
 }
 
 async function saveAssignment() {
@@ -853,6 +956,71 @@ async function handleDelete() {
 
   .assignment-card {
     padding: 10px;
+  }
+}
+
+/* 附件列表样式 */
+.attachment-list {
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 8px;
+  background-color: #f9fafc;
+}
+
+.attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e4e7ed;
+  transition: background-color 0.2s;
+}
+
+.attachment-item:last-child {
+  border-bottom: none;
+}
+
+.attachment-item:hover {
+  background-color: #f0f2f5;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 14px;
+  color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 10px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.no-attachments {
+  color: #909399;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+
+@media (max-width: 576px) {
+  .attachment-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .file-name {
+    margin-right: 0;
+    width: 100%;
+  }
+  
+  .file-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 </style>

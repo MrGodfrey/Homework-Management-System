@@ -28,6 +28,7 @@ class Assignment(Base):
     file_rules = Column(String, nullable=True) # e.g., allowed extensions
     created_at = Column(DateTime, default=datetime.utcnow)
     submissions = relationship("Submission", back_populates="assignment")
+    attachment_files = relationship("AssignmentFile", back_populates="assignment", cascade="all, delete-orphan")
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -49,6 +50,15 @@ class SubmissionFile(Base):
     filename = Column(String, nullable=False)
     cos_key = Column(String, nullable=False)
     submission = relationship("Submission", back_populates="files")
+
+class AssignmentFile(Base):
+    __tablename__ = "assignment_files"
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    filename = Column(String, nullable=False)
+    cos_key = Column(String, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    assignment = relationship("Assignment", back_populates="attachment_files")
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
