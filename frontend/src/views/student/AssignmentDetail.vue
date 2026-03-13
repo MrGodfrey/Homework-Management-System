@@ -17,7 +17,7 @@
               <h3>{{ assignment.title }}</h3>
             </div>
           </template>
-          <el-descriptions :column="descriptionsColumn" border>
+          <el-descriptions :column="descriptionsColumn" :direction="descriptionsDirection" border>
             <el-descriptions-item label="截止时间" :label-style="labelStyle">
               {{ formatDate(assignment.deadline) }}
             </el-descriptions-item>
@@ -32,25 +32,16 @@
             <el-descriptions-item v-if="assignment.description" label="作业说明" :label-style="labelStyle">
               <div class="description">{{ assignment.description }}</div>
             </el-descriptions-item>
+            <el-descriptions-item v-if="attachments && attachments.length > 0" label="作业附件" :label-style="labelStyle">
+              <ol class="attachment-list">
+                <li v-for="file in attachments" :key="file.id" class="attachment-item">
+                  <a href="javascript:void(0)" @click="downloadAttachment(file.id)" class="attachment-link">
+                    {{ file.filename }}
+                  </a>
+                </li>
+              </ol>
+            </el-descriptions-item>
           </el-descriptions>
-
-          <!-- 作业附件区域 -->
-          <div v-if="attachments && attachments.length > 0" class="attachments-section">
-            <h4>作业附件</h4>
-            <div class="attachments-list">
-              <el-button 
-                v-for="file in attachments" 
-                :key="file.id"
-                size="small"
-                type="success"
-                plain
-                @click="downloadAttachment(file.id)"
-                class="attachment-btn"
-              >
-                📎 {{ file.filename }}
-              </el-button>
-            </div>
-          </div>
 
           <div class="upload-section">
             <h4>上传文件</h4>
@@ -121,6 +112,10 @@ onUnmounted(() => {
 // 响应式计算属性
 const descriptionsColumn = computed(() => {
   return windowWidth.value < 576 ? 1 : 1
+})
+
+const descriptionsDirection = computed(() => {
+  return windowWidth.value < 768 ? 'vertical' : 'horizontal'
 })
 
 const labelStyle = computed(() => {
@@ -264,33 +259,32 @@ async function downloadAttachment(fileId) {
   line-height: 1.6;
 }
 
-/* 作业附件区域 */
-.attachments-section {
-  margin-top: 20px;
-  padding: 16px;
-  background-color: #f9fafc;
-  border-radius: 6px;
-  border: 1px solid #e4e7ed;
+/* 作业附件列表样式 */
+.attachment-list {
+  list-style-type: decimal;
+  padding-left: 20px;
+  margin: 0;
 }
 
-.attachments-section h4 {
-  color: #303133;
-  margin-bottom: 12px;
-  font-size: 16px;
-  font-weight: 600;
+.attachment-item {
+  margin: 6px 0;
+  line-height: 1.8;
 }
 
-.attachments-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.attachment-link {
+  color: #409eff;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.attachment-btn {
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.attachment-link:hover {
+  color: #66b1ff;
+  text-decoration: underline;
+}
+
+.attachment-link:active {
+  color: #3a8ee6;
 }
 
 .upload-section {
@@ -363,6 +357,25 @@ async function downloadAttachment(fileId) {
   .spacer {
     width: 60px;
   }
+  
+  /* 垂直方向描述列表样式优化 */
+  .detail-card :deep(.el-descriptions--vertical .el-descriptions__label) {
+    background-color: #f5f7fa;
+    font-weight: 600;
+    padding: 10px 12px;
+  }
+  
+  .detail-card :deep(.el-descriptions--vertical .el-descriptions__content) {
+    padding: 12px;
+  }
+  
+  .detail-card :deep(.el-descriptions__label) {
+    font-size: 13px;
+  }
+  
+  .detail-card :deep(.el-descriptions__content) {
+    font-size: 14px;
+  }
 
   .back-btn {
     padding: 8px 12px;
@@ -391,6 +404,15 @@ async function downloadAttachment(fileId) {
 
   .detail-card :deep(.el-descriptions__content) {
     font-size: 13px;
+  }
+  
+  .attachment-list {
+    padding-left: 16px;
+    font-size: 13px;
+  }
+  
+  .attachment-item {
+    margin: 4px 0;
   }
 
   .upload-progress {
@@ -459,6 +481,16 @@ async function downloadAttachment(fileId) {
   .detail-card :deep(.el-descriptions__content) {
     font-size: 12px;
     padding: 8px;
+  }
+  
+  .attachment-list {
+    padding-left: 14px;
+    font-size: 12px;
+  }
+  
+  .attachment-item {
+    margin: 3px 0;
+    line-height: 1.6;
   }
 
   .detail-card :deep(.el-upload__tip) {
