@@ -32,6 +32,12 @@
                 <el-tag v-else type="info">未提交</el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="最终得分" min-width="90" align="center">
+              <template #default="{ row }">
+                <span v-if="row.status.is_graded" class="score-text">{{ row.status.score }}</span>
+                <span v-else style="color: #909399;">{{ row.status.submitted ? '待批改' : '-' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" min-width="150">
               <template #default="{ row }">
                 <div class="action-buttons">
@@ -63,6 +69,11 @@
                 <el-tag :type="assignment.allow_late ? 'success' : 'danger'" size="small">
                   {{ assignment.allow_late ? '是' : '否' }}
                 </el-tag>
+              </div>
+              <div class="card-row">
+                <span class="label">最终得分:</span>
+                <span v-if="assignment.status.is_graded" class="score-text">{{ assignment.status.score }}</span>
+                <span v-else style="color: #909399;">{{ assignment.status.submitted ? '待批改' : '-' }}</span>
               </div>
             </div>
             <div class="card-actions">
@@ -471,5 +482,10 @@ async function loadData() {
   .assignment-card {
     padding: 10px;
   }
+}
+
+.score-text {
+  font-weight: 600;
+  color: #409eff;
 }
 </style>

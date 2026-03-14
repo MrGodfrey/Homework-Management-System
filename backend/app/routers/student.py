@@ -37,10 +37,19 @@ def get_assignments(db: Session = Depends(get_db), current_student: Student = De
             Submission.student_id == current_student.id
         ).order_by(desc(Submission.version_no)).first()
         
+        # 查找最近一次已批改的提交，作为最终得分
+        latest_graded = db.query(Submission).filter(
+            Submission.assignment_id == assign.id,
+            Submission.student_id == current_student.id,
+            Submission.is_graded == True
+        ).order_by(desc(Submission.version_no)).first()
+        
         status_info = {
             "submitted": latest_sub is not None,
             "version_no": latest_sub.version_no if latest_sub else None,
-            "submitted_at": latest_sub.submitted_at if latest_sub else None
+            "submitted_at": latest_sub.submitted_at if latest_sub else None,
+            "score": latest_graded.score if latest_graded else None,
+            "is_graded": latest_graded is not None
         }
         
         results.append({
