@@ -29,7 +29,7 @@
       <el-main class="main-content">
         <!-- 桌面/平板端表格视图 -->
         <div class="desktop-view">
-          <el-table :data="groupedSubmissions" v-loading="loading" style="width:100%">
+          <el-table ref="tableRef" :data="groupedSubmissions" v-loading="loading" style="width:100%" @row-click="toggleExpand" row-class-name="clickable-row">
             <el-table-column type="expand">
               <template #default="{ row }">
                 <div class="expand-content">
@@ -76,8 +76,11 @@
             </el-table-column>
             <el-table-column label="最新分数" min-width="120" align="center">
               <template #default="{ row }">
-                <el-tag v-if="row.latestGraded" type="success" size="small">{{ row.latestScore }}分</el-tag>
-                <el-tag v-else type="warning" size="small">需更新</el-tag>
+                <el-tooltip v-if="row.latestGraded && row.hasNewUngraded" content="学生有新版本，需要进行更新" placement="top">
+                  <el-tag type="warning" size="small" style="cursor: pointer;">{{ row.latestScore }}分</el-tag>
+                </el-tooltip>
+                <el-tag v-else-if="row.latestGraded" type="success" size="small">{{ row.latestScore }}分</el-tag>
+                <el-tag v-else type="info" size="small">待评分</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -167,6 +170,11 @@ const gradeDialogVisible = ref(false)
 const grading = ref(false)
 const currentStudent = ref(null)
 const gradeForm = reactive({ score: 85 })
+const tableRef = ref(null)
+
+function toggleExpand(row) {
+  tableRef.value?.toggleRowExpansion(row)
+}
 
 // 按学生分组的提交记录
 const groupedSubmissions = computed(() => {
@@ -194,12 +202,17 @@ const groupedSubmissions = computed(() => {
     const allGraded = group.submissions.every(s => s.is_graded)
     const someGraded = group.submissions.some(s => s.is_graded)
     
+    // 找到最近一次被批改的提交（按版本号降序，已排好序）
+    const lastGraded = group.submissions.find(s => s.is_graded)
+    const hasNewUngraded = lastGraded && !latest.is_graded
+    
     return {
       ...group,
       latestVersion: latest.version,
       latestTime: latest.time,
-      latestGraded: latest.is_graded,
-      latestScore: latest.score,
+      latestGraded: !!lastGraded,
+      latestScore: lastGraded ? lastGraded.score : null,
+      hasNewUngraded,
       allGraded,
       someGraded
     }
@@ -383,6 +396,7 @@ onMounted(loadSubmissions)
 
 .desktop-view { display: block; overflow-x: auto; }
 .desktop-view :deep(.el-table) { font-size: 14px; }
+.desktop-view :deep(.clickable-row) { cursor: pointer; }
 .desktop-view :deep(.el-table th) { padding: 8px 0; font-size: 13px; }
 .desktop-view :deep(.el-table td) { padding: 8px 0; }
 .desktop-view :deep(.el-table__cell) { padding-left: 6px; padding-right: 6px; }
