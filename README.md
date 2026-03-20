@@ -56,6 +56,7 @@ Classroom 是一个面向高校小班教学场景（30 人左右，6-8 次作业
 - 多文件上传（带进度条，最大 50MB）
 - 无限次版本提交
 - 查看提交历史与成绩
+- 查看课堂互动次数与详细记录
 - 下载作业附件
 
 </td>
@@ -66,10 +67,11 @@ Classroom 是一个面向高校小班教学场景（30 人左右，6-8 次作业
 - CSV 批量导入学生名单
 - 一键生成 & 导出密码
 - 创建/编辑/删除作业（含附件）
-- 📊 总览仪表盘（学生×作业矩阵）
+- 📊 信息看板（学生×作业矩阵 + 互动次数）
+- 快速记录 & 管理学生课堂互动
 - 在线查看 & 评分每个提交版本
 - 批量下载（仅最新 / 全部版本）
-- 导出成绩 CSV 报告
+- 导出成绩 CSV 报告（含互动次数）
 - 审计日志追踪所有操作
 
 </td>
@@ -86,7 +88,7 @@ classroom/
 │   ├── app/
 │   │   ├── main.py             # 应用入口，CORS 配置
 │   │   ├── config.py           # 环境变量配置
-│   │   ├── models.py           # 数据库模型（7 张表）
+│   │   ├── models.py           # 数据库模型（8 张表）
 │   │   ├── schemas.py          # Pydantic 请求/响应模型
 │   │   ├── auth.py             # 密码加密 & JWT 处理
 │   │   ├── cos_utils.py        # 腾讯云 COS 工具函数
@@ -190,6 +192,7 @@ pkill -f uvicorn && pkill -f vite
 | POST | `/api/assignments/{id}/submit` | 提交作业 |
 | GET | `/api/assignments/{id}/submissions` | 查看提交历史 |
 | GET | `/api/assignments/{id}/attachments` | 获取作业附件 |
+| GET | `/api/assignments/interactions` | 查看课堂互动记录 |
 
 </details>
 
@@ -204,6 +207,9 @@ pkill -f uvicorn && pkill -f vite
 | GET | `/api/admin/dashboard` | 总览仪表盘数据 |
 | GET | `/api/admin/assignments/{id}/submissions` | 查看作业提交 |
 | GET | `/api/admin/assignments/{id}/download` | 批量下载提交 |
+| POST | `/api/admin/students/{id}/interactions` | 添加互动记录 |
+| GET | `/api/admin/students/{id}/interactions` | 查看学生互动 |
+| DELETE | `/api/admin/interactions/{id}` | 删除互动记录 |
 | GET | `/api/admin/logs` | 查看审计日志 |
 
 </details>
@@ -238,6 +244,15 @@ pkill -f uvicorn && pkill -f vite
                      │ id │ filename       │
                      │ cos_key             │
                      └─────────────────────┘
+
+┌──────────────┐
+│ interactions │  ← 课堂互动记录
+├──────────────┤
+│ id           │
+│ student_id   │
+│ created_at   │
+│ note         │
+└──────────────┘
 ```
 
 ---
