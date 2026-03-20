@@ -7,9 +7,9 @@ import os
 import uuid
 
 from app.database import get_db
-from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, AssignmentFile
+from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, AssignmentFile, Interaction, beijing_now
 from app.dependencies import get_current_student
-from app.schemas import AssignmentBase, StudentMeOut
+from app.schemas import AssignmentBase, StudentMeOut, InteractionOut
 from app.cos_utils import upload_file_to_cos, generate_presigned_url
 from app.config import settings
 
@@ -24,6 +24,23 @@ def get_current_student_info(current_student: Student = Depends(get_current_stud
     return {
         "student_id": current_student.student_id,
         "name": current_student.name
+    }
+
+@router.get("/interactions")
+def get_my_interactions(db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+    """GET /api/assignments/interactions - 获取当前学生的互动记录"""
+    interactions = db.query(Interaction).filter(
+        Interaction.student_id == current_student.id
+    ).order_by(Interaction.created_at.desc()).all()
+    return {
+        "count": len(interactions),
+        "items": [
+            {
+                "id": i.id,
+                "created_at": i.created_at,
+                "note": i.note
+            } for i in interactions
+        ]
     }
 
 @router.get("")
@@ -141,7 +158,7 @@ async def submit_assignment(
     if not assign:
         raise HTTPException(status_code=404, detail="Assignment not found")
         
-    now = datetime.utcnow()
+    now = beijing_now()
     
     # Check deadline
     if now > assign.deadline and not assign.allow_late:

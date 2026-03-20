@@ -2,7 +2,7 @@
   <div class="page">
     <el-container>
       <el-header class="app-header">
-        <span class="title">作业列表</span>
+        <span class="title">作业与互动</span>
         <div class="user-info">
           <span v-if="userInfo" class="user-name">{{ userInfo.name }} <span class="user-id">({{ userInfo.student_id }})</span></span>
           <el-button type="danger" plain size="small" @click="logout" class="logout-btn">
@@ -12,6 +12,26 @@
         </div>
       </el-header>
       <el-main class="main-content">
+        <!-- 互动统计 -->
+        <div class="interaction-summary" @click="showInteractionDetail = true" style="cursor:pointer;">
+          <span class="interaction-label">📢 课堂互动次数：</span>
+          <span class="interaction-count">{{ interactionCount }}</span>
+          <span class="interaction-hint">（点击查看详情）</span>
+        </div>
+
+        <!-- 互动详情弹窗 -->
+        <el-dialog v-model="showInteractionDetail" title="课堂互动记录" width="500px">
+          <el-table :data="interactionItems" style="width:100%" max-height="400">
+            <el-table-column label="时间" min-width="160">
+              <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.note || '-' }}</template>
+            </el-table-column>
+          </el-table>
+          <div v-if="interactionItems.length === 0" style="text-align:center;padding:20px;color:#909399;">暂无互动记录</div>
+        </el-dialog>
+
         <!-- 桌面/平板端表格视图 -->
         <div class="desktop-view">
           <el-table :data="assignments" v-loading="loading" style="width:100%">
@@ -106,6 +126,9 @@ const auth = useAuthStore()
 const assignments = ref([])
 const userInfo = ref(null)
 const loading = ref(false)
+const interactionCount = ref(0)
+const interactionItems = ref([])
+const showInteractionDetail = ref(false)
 
 // 响应式窗口尺寸
 const windowWidth = ref(window.innerWidth)
@@ -151,9 +174,14 @@ async function loadData() {
     const userRes = await api.get('/assignments/me')
     userInfo.value = userRes.data
     
-    // 获取作业列表
-    const res = await api.get('/assignments')
+    // 获取作业列表和互动记录
+    const [res, intRes] = await Promise.all([
+      api.get('/assignments'),
+      api.get('/assignments/interactions')
+    ])
     assignments.value = res.data
+    interactionCount.value = intRes.data.count
+    interactionItems.value = intRes.data.items
   } catch {
     ElMessage.error('加载数据失败')
   } finally {
@@ -215,6 +243,39 @@ async function loadData() {
 .main-content {
   padding: 20px;
   overflow-x: hidden;
+}
+
+.interaction-summary {
+  background: #fff;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: box-shadow 0.2s;
+}
+
+.interaction-summary:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.interaction-label {
+  font-size: 15px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.interaction-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+.interaction-hint {
+  font-size: 12px;
+  color: #909399;
 }
 
 /* 桌面/平板端表格视图 */

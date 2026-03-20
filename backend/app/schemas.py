@@ -64,3 +64,14 @@ class AssignmentOutWithFiles(AssignmentOut):
 class GradeSubmission(BaseModel):
     score: Optional[float] = None
 
+class InteractionCreate(BaseModel):
+    note: Optional[str] = None
+
+class InteractionOut(BaseModel):
+    id: int
+    student_id: int
+    created_at: datetime
+    note: Optional[str] = None
+    class Config:
+        from_attributes = True
+

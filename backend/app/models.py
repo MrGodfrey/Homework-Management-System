@@ -1,7 +1,12 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from app.database import Base
+
+_beijing_tz = timezone(timedelta(hours=8))
+
+def beijing_now():
+    return datetime.now(_beijing_tz).replace(tzinfo=None)
 
 class Instructor(Base):
     __tablename__ = "instructors"
@@ -17,6 +22,7 @@ class Student(Base):
     hashed_password = Column(String, nullable=False)
     plain_password = Column(String, nullable=True)  # 明文密码，用于管理员查看
     submissions = relationship("Submission", back_populates="student")
+    interactions = relationship("Interaction", back_populates="student", cascade="all, delete-orphan")
 
 class Assignment(Base):
     __tablename__ = "assignments"
@@ -26,7 +32,7 @@ class Assignment(Base):
     deadline = Column(DateTime, nullable=False)
     allow_late = Column(Boolean, default=False)
     file_rules = Column(String, nullable=True) # e.g., allowed extensions
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=beijing_now)
     submissions = relationship("Submission", back_populates="assignment")
     attachment_files = relationship("AssignmentFile", back_populates="assignment", cascade="all, delete-orphan")
 
@@ -36,7 +42,7 @@ class Submission(Base):
     assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     version_no = Column(Integer, nullable=False, default=1)
-    submitted_at = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, default=beijing_now)
     score = Column(Float, nullable=True)  # 具体分数
     is_graded = Column(Boolean, default=False, nullable=False)  # 是否已批改
     assignment = relationship("Assignment", back_populates="submissions")
@@ -57,8 +63,16 @@ class AssignmentFile(Base):
     assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
     filename = Column(String, nullable=False)
     cos_key = Column(String, nullable=False)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=beijing_now)
     assignment = relationship("Assignment", back_populates="attachment_files")
+
+class Interaction(Base):
+    __tablename__ = "interactions"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    created_at = Column(DateTime, default=beijing_now)
+    note = Column(Text, nullable=True)
+    student = relationship("Student", back_populates="interactions")
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -67,4 +81,4 @@ class AuditLog(Base):
     user_id = Column(Integer, nullable=False)
     action = Column(String, nullable=False)
     details = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=beijing_now)

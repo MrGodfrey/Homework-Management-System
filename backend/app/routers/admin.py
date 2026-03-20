@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor, AssignmentFile
-from app.schemas import StudentOut, StudentCreate, StudentUpdate, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut
+from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor, AssignmentFile, Interaction, beijing_now
+from app.schemas import StudentOut, StudentCreate, StudentUpdate, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut, InteractionCreate, InteractionOut
 from app.dependencies import get_current_instructor
 from app.auth import hash_password
 from app.cos_utils import client as cos_client, generate_presigned_url, upload_file_to_cos
@@ -299,7 +299,7 @@ async def upload_assignment_attachment(
         file_bytes = await file.read()
         
         # 生成 COS key
-        cos_key = f"assignments/{assignment_id}/attachments/{datetime.utcnow().timestamp()}_{file.filename}"
+        cos_key = f"assignments/{assignment_id}/attachments/{beijing_now().timestamp()}_{file.filename}"
         
         # 上传到 COS
         upload_file_to_cos(file_bytes, cos_key)
@@ -497,8 +497,19 @@ def get_dashboard(db: Session = Depends(get_db)):
     assignments = db.query(Assignment).all()
     
     result = []
+    # 预加载每个学生的互动次数
+    interaction_counts = dict(
+        db.query(Interaction.student_id, func.count(Interaction.id))
+        .group_by(Interaction.student_id)
+        .all()
+    )
     for student in students:
-        row = {"student_id": student.student_id, "name": student.name, "submissions": {}}
+        row = {
+            "student_id": student.student_id,
+            "name": student.name,
+            "submissions": {},
+            "interaction_count": interaction_counts.get(student.id, 0)
+        }
         for assignment in assignments:
             sub = db.query(Submission).filter(
                 Submission.student_id == student.id,
@@ -507,6 +518,33 @@ def get_dashboard(db: Session = Depends(get_db)):
             row["submissions"][assignment.id] = sub.version_no if sub else 0
         result.append(row)
     return result
+
+@router.post("/students/{student_id}/interactions", response_model=InteractionOut)
+def add_interaction(student_id: int, data: InteractionCreate, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    interaction = Interaction(student_id=student.id, note=data.note)
+    db.add(interaction)
+    db.commit()
+    db.refresh(interaction)
+    return interaction
+
+@router.get("/students/{student_id}/interactions", response_model=List[InteractionOut])
+def get_interactions(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    return db.query(Interaction).filter(Interaction.student_id == student.id).order_by(Interaction.created_at.desc()).all()
+
+@router.delete("/interactions/{interaction_id}")
+def delete_interaction(interaction_id: int, db: Session = Depends(get_db)):
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+        raise HTTPException(status_code=404, detail="互动记录不存在")
+    db.delete(interaction)
+    db.commit()
+    return {"message": "互动记录已删除"}
 
 @router.get("/assignments/{assignment_id}/submissions")
 def get_submissions(assignment_id: int, db: Session = Depends(get_db)):
