@@ -740,15 +740,22 @@ def export_all_grades_csv(db: Session = Depends(get_db)):
     output.write('\ufeff')  # UTF-8 BOM for Excel
     writer = csv.writer(output)
     
-    # 构建表头：学号、姓名 + 各个作业标题
-    header = ["学号", "姓名"]
+    # 构建表头：学号、姓名、互动次数 + 各个作业标题
+    header = ["学号", "姓名", "互动次数"]
     for assignment in assignments:
         header.append(assignment.title)
     writer.writerow(header)
     
+    # 预加载互动次数
+    interaction_counts = dict(
+        db.query(Interaction.student_id, func.count(Interaction.id))
+        .group_by(Interaction.student_id)
+        .all()
+    )
+    
     # 为每个学生构建一行数据
     for student in students:
-        row = [student.student_id, student.name]
+        row = [student.student_id, student.name, interaction_counts.get(student.id, 0)]
         
         # 对每个作业，查找该学生的提交情况
         for assignment in assignments:
