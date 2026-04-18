@@ -1,8 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # 将本地代码同步到腾讯云服务器（绕过 GitHub）
 # 用法：./sync_to_server.sh
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [[ ! -d backend || ! -d frontend || ! -f sync_to_server.sh ]]; then
+  echo "错误：未定位到项目根目录，已中止同步。"
+  exit 1
+fi
 
 REMOTE="tencent-prod:/home/ubuntu/classroom/"
 EXCLUDES=(
@@ -37,6 +45,7 @@ EXCLUDES=(
 )
 
 echo "开始同步代码到服务器：$REMOTE"
+echo "同步源目录：$SCRIPT_DIR"
 
 RSYNC_ARGS=(-avz --progress)
 
