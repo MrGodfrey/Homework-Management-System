@@ -72,27 +72,26 @@ Those look historical. Current root scripts (`sync_to_server.sh`, `deploy.sh`) p
 
 ### Preferred scripted path
 
-1. Local sync: `./sync_to_server.sh`
-   - target: `tencent-prod:/home/ubuntu/classroom/`
-   - excludes: VCS/editor junk, local env files, DB and backup files, virtualenvs, `node_modules`, `dist`, caches, local test artifacts (`.tmp/`, `playwright-report/`, `test-results/`), and exported password CSVs.
-2. Remote deploy: `bash /home/ubuntu/classroom/deploy.sh`
-   - backend:
-     - `cd /home/ubuntu/classroom/backend`
-     - `source venv/bin/activate`
-     - `pip install -r requirements.txt -q`
-     - `alembic upgrade head`
-     - `sudo systemctl restart classroom-backend`
-   - frontend:
-     - `cd /home/ubuntu/classroom/frontend`
-     - `npm install --silent`
-     - `npm run build`
-     - `sudo cp -r dist/* /var/www/classroom/`
+1. Full deploy from local machine: `./deploy.sh`
+   - runs a remote preflight on `tencent-prod`
+   - confirms remote `ENV=PROD` and the effective `DATABASE_URL`
+   - backs up `/home/ubuntu/classroom/backend/classroom.db`
+   - verifies the backup file exists
+   - rsyncs repo contents to `tencent-prod:/home/ubuntu/classroom/`
+   - runs remote backend install + Alembic upgrade + `sudo systemctl restart classroom-backend`
+   - runs remote frontend build and publishes to `/var/www/classroom`
+   - runs remote smoke checks against backend root, frontend root, admin login page, and invalid-login probe
+2. Sync only: `./sync_to_server.sh`
+   - thin wrapper around `./deploy.sh --sync-only`
+   - uses the same rsync excludes as full deploy
 
-### Critical safety gap
+### Safety status
 
-`deploy.sh` does **not** back up the database before `alembic upgrade head`.
+The old safety gap in `deploy.sh` was closed on 2026-04-18:
 
-Operational rule: do not use `deploy.sh` blindly for production DB-affecting deploys. First run a manual DB backup on the server.
+- backup now happens before sync and migration
+- backup verification is explicit
+- deploy order now matches the repo rule: backup -> verify backup -> sync -> install deps -> migrate -> restart -> smoke test
 
 ## 5. Database Safety Model
 
@@ -244,8 +243,8 @@ These are not all fixed yet. Do not forget them during future optimization work.
 - `srever.md`: SSH and server-access setup
 - `start_local_test.py`: local dev entrypoint
 - `switch_env.sh`: toggles `ENV` inside `backend/.env`
-- `sync_to_server.sh`: rsync deployment transport
-- `deploy.sh`: remote deploy steps
+- `sync_to_server.sh`: sync-only wrapper around `deploy.sh --sync-only`
+- `deploy.sh`: canonical local one-command production deploy entrypoint
 - `student.csv`: sample student seed data
 - `MYSELFTEST.md`: local test rationale/history
 
