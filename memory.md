@@ -74,7 +74,7 @@ Those look historical. Current root scripts (`sync_to_server.sh`, `deploy.sh`) p
 
 1. Local sync: `./sync_to_server.sh`
    - target: `tencent-prod:/home/ubuntu/classroom/`
-   - excludes: `.git/`, `backend/.env`, `backend/classroom.db`, backup DB files, venvs, caches, `frontend/node_modules`, `frontend/dist`, logs.
+   - excludes: VCS/editor junk, local env files, DB and backup files, virtualenvs, `node_modules`, `dist`, caches, local test artifacts (`.tmp/`, `playwright-report/`, `test-results/`), and exported password CSVs.
 2. Remote deploy: `bash /home/ubuntu/classroom/deploy.sh`
    - backend:
      - `cd /home/ubuntu/classroom/backend`
