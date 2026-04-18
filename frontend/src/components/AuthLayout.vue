@@ -8,19 +8,7 @@
           </div>
           <div class="auth-brand-copy">
             <h1>ClassLink</h1>
-            <p>{{ subtitle }}</p>
           </div>
-        </div>
-
-        <div class="auth-notes">
-          <article class="auth-note">
-            <div class="auth-note-title">统一的课堂工作区</div>
-            <div class="auth-note-copy">保留作业发布、提交历史、评分、附件下载、学生管理和互动记录等全部流程。</div>
-          </article>
-          <article class="auth-note">
-            <div class="auth-note-title">当前入口</div>
-            <div class="auth-note-copy">{{ note }}</div>
-          </article>
         </div>
       </section>
 
@@ -28,7 +16,6 @@
         <div class="auth-card-head">
           <span class="auth-card-kicker">{{ kicker }}</span>
           <h2>{{ title }}</h2>
-          <p>{{ description }}</p>
         </div>
 
         <slot />

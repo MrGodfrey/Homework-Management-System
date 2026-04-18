@@ -8,9 +8,7 @@
 
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Submission Review</span>
-          <h1 class="page-title">提交详情</h1>
-          <p class="page-subtitle">{{ assignmentTitle }}</p>
+          <h1 class="page-title">{{ assignmentTitle || '提交详情' }}</h1>
         </div>
 
         <div class="page-hero-actions">
@@ -27,7 +25,6 @@
             <span>提交学生</span>
           </div>
           <div class="summary-tile-value">{{ groupedSubmissions.length }}</div>
-          <div class="summary-tile-hint">当前作业已有提交记录的学生数</div>
         </article>
 
         <article class="summary-tile">
@@ -36,7 +33,6 @@
             <span>已评分</span>
           </div>
           <div class="summary-tile-value">{{ gradedCount }}</div>
-          <div class="summary-tile-hint">按学生最近已评分版本统计</div>
         </article>
 
         <article class="summary-tile">
@@ -45,7 +41,6 @@
             <span>待处理</span>
           </div>
           <div class="summary-tile-value">{{ pendingCount }}</div>
-          <div class="summary-tile-hint">包含最新版本尚未评分的学生</div>
         </article>
       </section>
 
@@ -53,7 +48,6 @@
         <div class="section-header">
           <div>
             <h2 class="section-title">提交清单</h2>
-            <p class="section-subtitle">桌面端保留可展开版本表格，移动端展示版本卡片。</p>
           </div>
         </div>
 
@@ -195,7 +189,7 @@ const grading = ref(false)
 const currentStudent = ref(null)
 const gradeForm = reactive({ score: 85 })
 const tableRef = ref(null)
-const assignmentTitle = ref('查看每位学生的提交版本、下载记录和评分状态。')
+const assignmentTitle = ref('提交详情')
 
 const groupedSubmissions = computed(() => {
   const groups = {}
@@ -351,7 +345,7 @@ async function loadSubmissions() {
     const assignmentRes = await api.get('/admin/assignments')
     const matched = assignmentRes.data.find((item) => String(item.id) === String(route.params.id))
     if (matched) {
-      assignmentTitle.value = `${matched.title} 的全部提交版本、评分与导出操作。`
+      assignmentTitle.value = matched.title
     }
   } catch {
     ElMessage.error('加载提交列表失败')

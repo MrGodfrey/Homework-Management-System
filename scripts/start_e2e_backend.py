@@ -10,7 +10,7 @@ BACKEND = ROOT / "backend"
 RUNTIME_DIR = ROOT / ".tmp" / "e2e"
 DB_PATH = RUNTIME_DIR / "classroom_e2e.db"
 STORAGE_DIR = RUNTIME_DIR / "storage"
-BACKEND_PORT = "18000"
+BACKEND_PORT = os.environ.get("PLAYWRIGHT_BACKEND_PORT", os.environ.get("BACKEND_PORT", "18000"))
 
 
 def build_env() -> dict[str, str]:

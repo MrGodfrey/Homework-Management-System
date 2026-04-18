@@ -3,9 +3,7 @@
     <div class="page-stack">
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Assignment Management</span>
           <h1 class="page-title">作业管理</h1>
-          <p class="page-subtitle">发布新作业、维护附件与格式规则，并保留原有导出、编辑和强制删除流程。</p>
         </div>
 
         <div class="page-hero-actions">
@@ -21,7 +19,6 @@
             <span>作业总数</span>
           </div>
           <div class="summary-tile-value">{{ assignments.length }}</div>
-          <div class="summary-tile-hint">当前已创建的全部作业</div>
         </article>
 
         <article class="summary-tile">
@@ -30,7 +27,6 @@
             <span>学生人数</span>
           </div>
           <div class="summary-tile-value">{{ totalStudents }}</div>
-          <div class="summary-tile-hint">用于计算提交覆盖率</div>
         </article>
 
         <article class="summary-tile">
@@ -39,7 +35,6 @@
             <span>附件能力</span>
           </div>
           <div class="summary-tile-value">{{ attachmentReadyCount }}</div>
-          <div class="summary-tile-hint">已进入可维护附件状态的作业</div>
         </article>
       </section>
 
@@ -47,7 +42,6 @@
         <div class="section-header">
           <div>
             <h2 class="section-title">作业列表</h2>
-            <p class="section-subtitle">桌面端保留原有表格交互，移动端切换为信息卡片。</p>
           </div>
         </div>
 

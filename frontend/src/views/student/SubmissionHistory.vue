@@ -8,9 +8,8 @@
 
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Submission History</span>
           <h1 class="page-title">提交历史</h1>
-          <p class="page-subtitle">{{ assignment?.title || '查看所有历史版本与已上传文件。' }}</p>
+          <p v-if="assignment?.title" class="page-subtitle">{{ assignment.title }}</p>
         </div>
       </section>
 

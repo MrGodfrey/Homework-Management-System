@@ -3,9 +3,7 @@
     <div class="page-stack">
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Student Workspace</span>
           <h1 class="page-title">我的作业</h1>
-          <p class="page-subtitle">查看并提交课程任务，跟进作业进度与反馈结果。</p>
         </div>
 
         <div class="page-hero-actions">
@@ -15,20 +13,19 @@
             </div>
             <div>
               <p class="metric-card-label">课堂互动次数</p>
-              <p class="metric-card-value">{{ interactionCount }} <small>点击查看详情</small></p>
+              <p class="metric-card-value">{{ interactionCount }}</p>
             </div>
           </button>
         </div>
       </section>
 
-      <section class="summary-grid">
+      <section class="summary-grid assignment-overview-grid">
         <article class="summary-tile">
           <div class="summary-tile-label">
             <el-icon><Tickets /></el-icon>
             <span>全部作业</span>
           </div>
           <div class="summary-tile-value">{{ assignments.length }}</div>
-          <div class="summary-tile-hint">当前学期已发布的任务数量</div>
         </article>
 
         <article class="summary-tile">
@@ -37,7 +34,6 @@
             <span>已提交</span>
           </div>
           <div class="summary-tile-value">{{ submittedCount }}</div>
-          <div class="summary-tile-hint">已有版本记录的作业</div>
         </article>
 
         <article class="summary-tile">
@@ -46,7 +42,6 @@
             <span>待处理</span>
           </div>
           <div class="summary-tile-value">{{ pendingCount }}</div>
-          <div class="summary-tile-hint">尚未提交或仍待完成</div>
         </article>
       </section>
 
@@ -54,7 +49,6 @@
         <div class="section-header">
           <div>
             <h2 class="section-title">任务列表</h2>
-            <p class="section-subtitle">保留原有提交、历史查看、互动记录与成绩展示流程。</p>
           </div>
         </div>
 
@@ -154,12 +148,8 @@ import { computed, ref, onMounted } from 'vue'
 import { CircleCheckFilled, DataBoard, Tickets, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
-import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
 import api from '@/utils/api'
 
-const router = useRouter()
-const auth = useAuthStore()
 const assignments = ref([])
 const userInfo = ref(null)
 const loading = ref(false)
@@ -190,11 +180,6 @@ function formatDate(d) {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
-function logout() {
-  auth.logout()
-  router.push('/login')
-}
-
 async function loadData() {
   loading.value = true
   try {
@@ -217,6 +202,10 @@ async function loadData() {
 </script>
 
 <style scoped>
+.assignment-overview-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .score-text {
   color: var(--brand);
   font-weight: 800;
@@ -237,5 +226,11 @@ async function loadData() {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 1080px) {
+  .assignment-overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 </style>

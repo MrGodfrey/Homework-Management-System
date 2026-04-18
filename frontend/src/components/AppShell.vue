@@ -14,11 +14,11 @@
       <nav class="shell-nav" aria-label="Primary">
         <button
           v-for="item in navItems"
-          :key="item.path"
+          :key="item.path || item.label"
           type="button"
           class="shell-nav-item"
-          :class="{ 'is-active': isActive(item.path) }"
-          @click="goTo(item.path)"
+          :class="{ 'is-active': item.path ? isActive(item.path) : false, 'is-external': !!item.externalUrl }"
+          @click="goTo(item)"
         >
           <span class="shell-nav-icon">
             <el-icon :size="18"><component :is="item.icon" /></el-icon>
@@ -62,11 +62,11 @@
       <nav class="shell-mobile-nav" aria-label="Mobile primary">
         <button
           v-for="item in navItems"
-          :key="item.path"
+          :key="item.path || item.label"
           type="button"
           class="shell-nav-item"
-          :class="{ 'is-active': isActive(item.path) }"
-          @click="goTo(item.path)"
+          :class="{ 'is-active': item.path ? isActive(item.path) : false, 'is-external': !!item.externalUrl }"
+          @click="goTo(item)"
         >
           <span class="shell-nav-icon">
             <el-icon :size="16"><component :is="item.icon" /></el-icon>
@@ -85,8 +85,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DataBoard, Document, Reading, School, SwitchButton, User } from '@element-plus/icons-vue'
+import { DataBoard, Document, HomeFilled, Reading, School, SwitchButton, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+
+const COURSE_HOME_URL = 'https://www.drwang.fun/neural-networks.html'
 
 const props = defineProps({
   role: {
@@ -112,11 +114,15 @@ const navItems = computed(() => {
     return [
       { label: '看板', path: '/admin/dashboard', icon: DataBoard },
       { label: '作业管理', path: '/admin/assignments', icon: Document },
-      { label: '学生管理', path: '/admin/students', icon: User }
+      { label: '学生管理', path: '/admin/students', icon: User },
+      { label: '课程主页', externalUrl: COURSE_HOME_URL, icon: HomeFilled }
     ]
   }
 
-  return [{ label: '作业列表', path: '/assignments', icon: Reading }]
+  return [
+    { label: '作业列表', path: '/assignments', icon: Reading },
+    { label: '课程主页', externalUrl: COURSE_HOME_URL, icon: HomeFilled }
+  ]
 })
 
 const roleLabel = computed(() => (props.role === 'instructor' ? 'Instructor Workspace' : 'Student Workspace'))
@@ -131,9 +137,14 @@ function isActive(path) {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
-function goTo(path) {
-  if (!isActive(path)) {
-    router.push(path)
+function goTo(item) {
+  if (item.externalUrl) {
+    window.open(item.externalUrl, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  if (item.path && !isActive(item.path)) {
+    router.push(item.path)
   }
 }
 

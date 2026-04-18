@@ -8,9 +8,7 @@
 
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Assignment Detail</span>
           <h1 class="page-title">{{ assignment?.title || '提交作业' }}</h1>
-          <p class="page-subtitle">保留附件下载、文件格式校验、进度展示与版本跳转。</p>
         </div>
       </section>
 
@@ -69,7 +67,6 @@
               </div>
               <div>
                 <h2 class="section-title">上传文件</h2>
-                <p class="section-subtitle">支持多文件同时上传。</p>
               </div>
             </div>
 
@@ -107,11 +104,6 @@
             >
               提交作业
             </el-button>
-          </article>
-
-          <article class="subtle-panel">
-            <div class="subtle-panel-title">版本管理已启用</div>
-            <p class="subtle-panel-copy">每次提交都会生成新版本，提交成功后会自动跳转到历史页面查看记录。</p>
           </article>
         </aside>
       </section>

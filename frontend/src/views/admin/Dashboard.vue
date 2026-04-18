@@ -3,20 +3,17 @@
     <div class="page-stack">
       <section class="page-hero">
         <div>
-          <span class="page-eyebrow">Instructor Dashboard</span>
           <h1 class="page-title">课程看板</h1>
-          <p class="page-subtitle">在同一个工作区里查看学生提交进度、课堂互动和作业完成情况。</p>
         </div>
       </section>
 
-      <section class="summary-grid">
+      <section class="summary-grid dashboard-summary-grid">
         <article class="summary-tile">
           <div class="summary-tile-label">
             <el-icon><User /></el-icon>
             <span>学生总数</span>
           </div>
           <div class="summary-tile-value">{{ matrix.length }}</div>
-          <div class="summary-tile-hint">当前班级已录入的学生人数</div>
         </article>
 
         <article class="summary-tile">
@@ -25,7 +22,6 @@
             <span>作业数量</span>
           </div>
           <div class="summary-tile-value">{{ assignments.length }}</div>
-          <div class="summary-tile-hint">看板中显示的全部任务</div>
         </article>
 
         <article class="summary-tile">
@@ -34,7 +30,6 @@
             <span>互动记录</span>
           </div>
           <div class="summary-tile-value">{{ totalInteractions }}</div>
-          <div class="summary-tile-hint">用于平时表现跟踪</div>
         </article>
       </section>
 
@@ -42,7 +37,6 @@
         <div class="section-header">
           <div>
             <h2 class="section-title">学生进度矩阵</h2>
-            <p class="section-subtitle">点击列标题可进入对应作业的提交详情，点击按钮可快速记录或管理互动。</p>
           </div>
         </div>
 
@@ -110,27 +104,30 @@
                   <h3 class="list-card-title">{{ student.name }}</h3>
                   <p class="list-card-subtitle">{{ student.student_id }}</p>
                 </div>
-                <span class="interaction-pill">{{ student.interaction_count }} 次互动</span>
               </div>
 
-              <div class="inline-actions card-actions">
-                <el-button
-                  size="small"
-                  type="primary"
-                  circle
-                  @click="quickAddInteraction(student)"
-                  :data-testid="`quick-add-${student.student_id}`"
-                >
-                  +
-                </el-button>
-                <el-button
-                  size="small"
-                  circle
-                  @click="openManageDialog(student)"
-                  :data-testid="`manage-interactions-${student.student_id}`"
-                >
-                  ⋯
-                </el-button>
+              <div class="interaction-toolbar">
+                <span class="meta-label">互动次数</span>
+                <div class="interaction-toolbar-actions">
+                  <span class="interaction-pill">{{ student.interaction_count }} 次</span>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    circle
+                    @click="quickAddInteraction(student)"
+                    :data-testid="`quick-add-${student.student_id}`"
+                  >
+                    +
+                  </el-button>
+                  <el-button
+                    size="small"
+                    circle
+                    @click="openManageDialog(student)"
+                    :data-testid="`manage-interactions-${student.student_id}`"
+                  >
+                    ⋯
+                  </el-button>
+                </div>
               </div>
 
               <div class="mobile-submissions">
@@ -292,6 +289,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.dashboard-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .interaction-cell {
   display: inline-flex;
   align-items: center;
@@ -314,9 +315,20 @@ onMounted(async () => {
   font-weight: 800;
 }
 
-.card-actions {
-  padding-bottom: 14px;
+.interaction-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 0 10px;
   border-bottom: 1px solid var(--border);
+}
+
+.interaction-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
 }
 
 .mobile-submissions {
@@ -342,5 +354,46 @@ onMounted(async () => {
   text-align: center;
   color: var(--text-muted);
   font-weight: 600;
+}
+
+@media (max-width: 960px) {
+  .dashboard-summary-grid .summary-tile-value {
+    font-size: 1.7rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-summary-grid {
+    gap: 8px;
+  }
+
+  .dashboard-summary-grid .summary-tile {
+    padding: 10px 8px;
+  }
+
+  .dashboard-summary-grid .summary-tile-label {
+    gap: 6px;
+    font-size: 0.74rem;
+    line-height: 1.3;
+  }
+
+  .dashboard-summary-grid .summary-tile-value {
+    font-size: 1.55rem;
+  }
+
+  .interaction-toolbar {
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .interaction-toolbar-actions {
+    width: auto;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  .interaction-pill {
+    padding: 6px 10px;
+  }
 }
 </style>

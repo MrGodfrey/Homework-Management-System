@@ -2,11 +2,8 @@
   <AuthLayout
     kicker="Instructor Access"
     title="教师登录"
-    description="进入课程看板、发布作业、管理学生和评分导出。"
-    subtitle="集中处理课程运行、提交批改与班级管理。"
-    note="教师入口保留原有全部管理功能，包括学生导入、密码重置、作业附件与成绩导出。"
-    switch-text="需要进入学生作业端？"
-    switch-label="学生登录入口"
+    switch-text="切换身份"
+    switch-label="前往学生登录"
     switch-route="/login"
   >
     <el-form class="auth-form" :model="form" @submit.prevent="handleLogin">

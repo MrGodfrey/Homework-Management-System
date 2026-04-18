@@ -1,11 +1,9 @@
 <template>
   <AppShell role="instructor" display-name="教师账号" display-meta="班级名单与口令">
     <div class="page-stack">
-      <section class="page-hero">
+      <section class="page-hero student-manage-hero">
         <div>
-          <span class="page-eyebrow">Student Management</span>
           <h1 class="page-title">学生管理</h1>
-          <p class="page-subtitle">保留原有导入名单、添加学生、密码重置、密码下载和删除学生等完整流程。</p>
         </div>
 
         <div class="page-hero-actions">
@@ -34,32 +32,13 @@
         </el-input>
       </section>
 
-      <section class="summary-grid">
+      <section class="summary-grid student-manage-summary">
         <article class="summary-tile">
           <div class="summary-tile-label">
             <el-icon><User /></el-icon>
             <span>学生人数</span>
           </div>
           <div class="summary-tile-value">{{ filteredStudents.length }}</div>
-          <div class="summary-tile-hint">当前筛选结果中的学生总数</div>
-        </article>
-
-        <article class="summary-tile">
-          <div class="summary-tile-label">
-            <el-icon><Download /></el-icon>
-            <span>口令导出</span>
-          </div>
-          <div class="summary-tile-value">{{ students.length > 0 ? 'Ready' : 'Idle' }}</div>
-          <div class="summary-tile-hint">可随时导出最新密码文件</div>
-        </article>
-
-        <article class="summary-tile">
-          <div class="summary-tile-label">
-            <el-icon><Upload /></el-icon>
-            <span>名单导入</span>
-          </div>
-          <div class="summary-tile-value">{{ students.length > 0 ? 'Active' : 'Empty' }}</div>
-          <div class="summary-tile-hint">支持 CSV 批量录入学生</div>
         </article>
       </section>
 
@@ -67,7 +46,6 @@
         <div class="section-header">
           <div>
             <h2 class="section-title">学籍列表</h2>
-            <p class="section-subtitle">桌面端保留表格操作入口，移动端以信息卡片显示。</p>
           </div>
         </div>
 
@@ -152,7 +130,7 @@
 
 <script setup>
 import { computed, ref, onMounted } from 'vue'
-import { Download, Search, Upload, User } from '@element-plus/icons-vue'
+import { Search, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
@@ -361,6 +339,11 @@ onMounted(loadStudents)
   width: min(320px, 100%);
 }
 
+.student-manage-summary {
+  grid-template-columns: minmax(180px, 240px);
+  justify-content: start;
+}
+
 .id-pill {
   display: inline-flex;
   align-items: center;
@@ -388,5 +371,25 @@ onMounted(loadStudents)
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 960px) {
+  .student-manage-hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .student-manage-hero .page-hero-actions {
+    width: auto;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .student-manage-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>
