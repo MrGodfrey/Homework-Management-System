@@ -1,6 +1,0 @@
-{
-  "name": "ClassLink - 学生作业管理系统",
-  "description": "高效的学生作业管理平台，支持多版本作业上传、实时看板、进度跟踪及师生互动记录。专为现代教育场景设计的轻量级管理工具。",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["作业管理", "版本追踪", "成绩录入", "学生导入", "师生互动"]
-}
