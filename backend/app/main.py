@@ -14,10 +14,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import auth, student, admin
+from app.routers import auth, student, admin, storage
 app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(admin.router)
+app.include_router(storage.router)
 
 @app.get("/")
 def read_root():

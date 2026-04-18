@@ -16,6 +16,7 @@
             :before-upload="importCSV"
             accept=".csv"
             :show-file-list="false"
+            data-testid="student-import-upload"
           >
             <el-button type="primary" class="import-btn">
               <span class="btn-text">导入名单</span>

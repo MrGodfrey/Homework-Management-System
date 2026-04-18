@@ -37,8 +37,21 @@
               <el-table-column label="互动" min-width="130" align="center">
                 <template #default="{ row }">
                   <span class="interaction-count">{{ row.interaction_count }}</span>
-                  <el-button size="small" type="primary" circle @click="quickAddInteraction(row)" style="margin-left:4px;">+</el-button>
-                  <el-button size="small" circle @click="openManageDialog(row)" style="margin-left:4px;">⋯</el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    circle
+                    @click="quickAddInteraction(row)"
+                    style="margin-left:4px;"
+                    :data-testid="`quick-add-${row.student_id}`"
+                  >+</el-button>
+                  <el-button
+                    size="small"
+                    circle
+                    @click="openManageDialog(row)"
+                    style="margin-left:4px;"
+                    :data-testid="`manage-interactions-${row.student_id}`"
+                  >⋯</el-button>
                 </template>
               </el-table-column>
               <el-table-column
@@ -78,8 +91,19 @@
                   <span class="assignment-title">课堂互动</span>
                   <div style="display:flex;align-items:center;gap:4px;">
                     <span class="interaction-count">{{ student.interaction_count }} 次</span>
-                    <el-button size="small" type="primary" circle @click="quickAddInteraction(student)">+</el-button>
-                    <el-button size="small" circle @click="openManageDialog(student)">⋯</el-button>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      circle
+                      @click="quickAddInteraction(student)"
+                      :data-testid="`quick-add-${student.student_id}`"
+                    >+</el-button>
+                    <el-button
+                      size="small"
+                      circle
+                      @click="openManageDialog(student)"
+                      :data-testid="`manage-interactions-${student.student_id}`"
+                    >⋯</el-button>
                   </div>
                 </div>
                 <div class="submission-item" v-for="a in assignments" :key="a.id">

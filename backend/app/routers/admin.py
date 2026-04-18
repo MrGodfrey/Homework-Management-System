@@ -17,7 +17,12 @@ from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog
 from app.schemas import StudentOut, StudentCreate, StudentUpdate, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut, InteractionCreate, InteractionOut
 from app.dependencies import get_current_instructor
 from app.auth import hash_password
-from app.cos_utils import client as cos_client, generate_presigned_url, upload_file_to_cos
+from app.cos_utils import (
+    delete_file_from_storage,
+    generate_presigned_url,
+    read_file_from_storage,
+    upload_file_to_cos,
+)
 from app.config import settings
 
 # 配置日志
@@ -340,10 +345,7 @@ def delete_assignment_attachment(
     
     # 从 COS 删除文件
     try:
-        cos_client.delete_object(
-            Bucket=settings.COS_BUCKET,
-            Key=assignment_file.cos_key
-        )
+        delete_file_from_storage(assignment_file.cos_key)
     except Exception as e:
         print(f"Failed to delete {assignment_file.cos_key} from COS: {e}")
     
@@ -463,10 +465,7 @@ def delete_assignment(assignment_id: int, force: bool = False, db: Session = Dep
     # 从COS删除文件
     for cos_key in cos_keys_to_delete:
         try:
-            cos_client.delete_object(
-                Bucket=settings.COS_BUCKET,
-                Key=cos_key
-            )
+            delete_file_from_storage(cos_key)
         except Exception as e:
             print(f"Failed to delete {cos_key} from COS: {e}")
             # 继续删除其他文件，不因单个文件失败而中断
@@ -592,11 +591,7 @@ def download_single_student_submission(assignment_id: int, student_no: str, db: 
     with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
         for file in latest_sub.files:
             try:
-                response = cos_client.get_object(
-                    Bucket=settings.COS_BUCKET,
-                    Key=file.cos_key
-                )
-                file_bytes = response['Body'].get_raw_stream().read()
+                file_bytes = read_file_from_storage(file.cos_key)
                 zf.writestr(file.filename, file_bytes)
             except Exception as e:
                 print(f"Failed to download {file.cos_key} from COS: {e}")
@@ -640,11 +635,7 @@ def download_submissions(assignment_id: int, mode: str = "latest", db: Session =
         for sub in subs_to_download:
             for file in sub.files:
                 try:
-                    response = cos_client.get_object(
-                        Bucket=settings.COS_BUCKET,
-                        Key=file.cos_key
-                    )
-                    file_bytes = response['Body'].get_raw_stream().read()
+                    file_bytes = read_file_from_storage(file.cos_key)
                     
                     student_prefix = f"{sub.student.student_id}_{sub.student.name}"
                     if mode == "all":

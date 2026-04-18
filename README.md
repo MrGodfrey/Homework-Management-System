@@ -168,6 +168,16 @@ python start_local_test.py
 pkill -f uvicorn && pkill -f vite
 ```
 
+### 自动回归测试
+
+网站改动后的默认回归命令：
+
+```bash
+npm run test:web
+```
+
+这条命令会自动拉起隔离的前后端测试实例，并执行完整浏览器回归。详细说明见 [MYSELFTEST.md](./MYSELFTEST.md)。
+
 ---
 
 ## 🔌 API 概览

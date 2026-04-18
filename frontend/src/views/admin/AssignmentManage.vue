@@ -160,6 +160,7 @@
               :show-file-list="false"
               accept="*"
               style="margin-bottom: 10px;"
+              data-testid="admin-attachment-upload"
             >
               <el-button size="small" type="primary" :loading="uploadingAttachment">
                 <span v-if="!uploadingAttachment">上传附件</span>

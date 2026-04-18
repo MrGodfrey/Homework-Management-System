@@ -50,6 +50,7 @@
               multiple
               :auto-upload="false"
               class="upload-container"
+              data-testid="student-assignment-upload"
             >
               <el-button type="primary">选择文件</el-button>
               <template #tip>

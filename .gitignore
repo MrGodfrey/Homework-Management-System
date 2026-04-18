@@ -19,6 +19,9 @@ build/
 htmlcov/
 node_modules/
 .node-version
+.tmp/
+playwright-report/
+test-results/
 
 passwords.csv
 true_students.csv

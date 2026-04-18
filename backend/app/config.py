@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     COS_SECRET_KEY: str = os.getenv("COS_SECRET_KEY", "")
     COS_REGION: str = os.getenv("COS_REGION", "ap-guangzhou")
     COS_BUCKET: str = os.getenv("COS_BUCKET", "")
-    
+    LOCAL_STORAGE_DIR: str = os.getenv("LOCAL_STORAGE_DIR", "")
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000")
+
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./classroom.db")
 
     class Config:
