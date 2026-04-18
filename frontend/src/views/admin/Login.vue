@@ -1,30 +1,48 @@
 <template>
-  <div class="login-container">
-    <el-card class="login-card">
-      <h2>教师登录</h2>
-      <el-form :model="form" label-width="80px" @submit.prevent="handleLogin">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="请输入用户名" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="loading" style="width:100%">登录</el-button>
-        </el-form-item>
-      </el-form>
-      <div style="text-align:center;margin-top:8px">
-        <el-link @click="$router.push('/login')">学生登录入口</el-link>
+  <AuthLayout
+    kicker="Instructor Access"
+    title="教师登录"
+    description="进入课程看板、发布作业、管理学生和评分导出。"
+    subtitle="集中处理课程运行、提交批改与班级管理。"
+    note="教师入口保留原有全部管理功能，包括学生导入、密码重置、作业附件与成绩导出。"
+    switch-text="需要进入学生作业端？"
+    switch-label="学生登录入口"
+    switch-route="/login"
+  >
+    <el-form class="auth-form" :model="form" @submit.prevent="handleLogin">
+      <div class="auth-field">
+        <label class="auth-label">用户名</label>
+        <el-input v-model="form.username" class="auth-input" placeholder="请输入用户名">
+          <template #prefix>
+            <el-icon><User /></el-icon>
+          </template>
+        </el-input>
       </div>
-    </el-card>
-  </div>
+
+      <div class="auth-field">
+        <label class="auth-label">密码</label>
+        <el-input v-model="form.password" class="auth-input" type="password" placeholder="请输入密码" show-password>
+          <template #prefix>
+            <el-icon><Lock /></el-icon>
+          </template>
+        </el-input>
+      </div>
+
+      <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%">
+        登录
+        <el-icon style="margin-left: 6px"><ArrowRight /></el-icon>
+      </el-button>
+    </el-form>
+  </AuthLayout>
 </template>
 
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ArrowRight, Lock, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import AuthLayout from '@/components/AuthLayout.vue'
 import api from '@/utils/api'
 
 const router = useRouter()
@@ -49,62 +67,3 @@ async function handleLogin() {
   }
 }
 </script>
-
-<style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background: #f5f7fa;
-  padding: 16px;
-}
-.login-card {
-  width: 100%;
-  max-width: 400px;
-  padding: 32px 24px;
-}
-h2 {
-  text-align: center;
-  margin-bottom: 24px;
-  color: #303133;
-  font-size: 24px;
-}
-
-/* 响应式布局 */
-@media (max-width: 768px) {
-  .login-container {
-    padding: 12px;
-  }
-  .login-card {
-    padding: 24px 20px;
-  }
-  h2 {
-    font-size: 22px;
-    margin-bottom: 20px;
-  }
-  :deep(.el-form-item__label) {
-    font-size: 14px;
-  }
-}
-
-@media (max-width: 576px) {
-  .login-container {
-    padding: 8px;
-  }
-  .login-card {
-    padding: 20px 16px;
-  }
-  h2 {
-    font-size: 20px;
-    margin-bottom: 16px;
-  }
-  :deep(.el-form-item__label) {
-    width: 70px !important;
-    font-size: 14px;
-  }
-  :deep(.el-button) {
-    padding: 12px 20px;
-  }
-}
-</style>

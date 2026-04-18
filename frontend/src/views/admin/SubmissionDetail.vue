@@ -1,61 +1,93 @@
 <template>
-  <div class="page">
-    <el-container>
-      <el-header class="app-header">
-        <div class="header-left">
-          <el-button @click="$router.push('/admin/assignments')" class="back-btn">
-            <span class="back-icon">←</span>
-            <span class="back-text">返回作业管理</span>
-          </el-button>
+  <AppShell role="instructor" display-name="教师账号" display-meta="提交批改与导出">
+    <div class="page-stack">
+      <button type="button" class="back-link" @click="$router.push('/admin/assignments')">
+        <el-icon><ArrowLeft /></el-icon>
+        <span>返回作业管理</span>
+      </button>
+
+      <section class="page-hero">
+        <div>
+          <span class="page-eyebrow">Submission Review</span>
+          <h1 class="page-title">提交详情</h1>
+          <p class="page-subtitle">{{ assignmentTitle }}</p>
         </div>
-        <div class="header-center">
-          <span class="title">提交详情</span>
+
+        <div class="page-hero-actions">
+          <el-button @click="exportCSV" :loading="exporting">导出CSV</el-button>
+          <el-button @click="downloadZip('latest')" :loading="downloading === 'latest'">最新版</el-button>
+          <el-button type="primary" @click="downloadZip('all')" :loading="downloading === 'all'">全部版本</el-button>
         </div>
-        <div class="header-actions">
-          <el-button @click="exportCSV" :loading="exporting" size="small">
-            <span class="btn-text">导出CSV</span>
-            <span class="btn-icon">📊</span>
-          </el-button>
-          <el-button @click="downloadZip('latest')" :loading="downloading === 'latest'" size="small">
-            <span class="btn-text">最新版</span>
-            <span class="btn-icon">📄</span>
-          </el-button>
-          <el-button type="primary" @click="downloadZip('all')" :loading="downloading === 'all'" size="small">
-            <span class="btn-text">全部版本</span>
-            <span class="btn-icon">📦</span>
-          </el-button>
+      </section>
+
+      <section class="summary-grid">
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><User /></el-icon>
+            <span>提交学生</span>
+          </div>
+          <div class="summary-tile-value">{{ groupedSubmissions.length }}</div>
+          <div class="summary-tile-hint">当前作业已有提交记录的学生数</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><CircleCheckFilled /></el-icon>
+            <span>已评分</span>
+          </div>
+          <div class="summary-tile-value">{{ gradedCount }}</div>
+          <div class="summary-tile-hint">按学生最近已评分版本统计</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><WarningFilled /></el-icon>
+            <span>待处理</span>
+          </div>
+          <div class="summary-tile-value">{{ pendingCount }}</div>
+          <div class="summary-tile-hint">包含最新版本尚未评分的学生</div>
+        </article>
+      </section>
+
+      <section class="surface-card soft">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">提交清单</h2>
+            <p class="section-subtitle">桌面端保留可展开版本表格，移动端展示版本卡片。</p>
+          </div>
         </div>
-      </el-header>
-      <el-main class="main-content">
-        <!-- 桌面/平板端表格视图 -->
-        <div class="desktop-view">
-          <el-table ref="tableRef" :data="groupedSubmissions" v-loading="loading" style="width:100%" @row-click="toggleExpand" row-class-name="clickable-row">
+
+        <div class="table-shell desktop-view">
+          <el-table
+            ref="tableRef"
+            :data="groupedSubmissions"
+            v-loading="loading"
+            style="width: 100%"
+            @row-click="toggleExpand"
+            row-class-name="clickable-row"
+          >
             <el-table-column type="expand">
               <template #default="{ row }">
                 <div class="expand-content">
                   <el-table :data="row.submissions" style="width: 100%">
                     <el-table-column prop="id" label="ID" width="80" />
-                    <el-table-column label="版本" width="80" align="center">
+                    <el-table-column label="版本" width="90" align="center">
                       <template #default="{ row: sub }">v{{ sub.version }}</template>
                     </el-table-column>
-                    <el-table-column label="提交时间" min-width="150">
+                    <el-table-column label="提交时间" min-width="160">
                       <template #default="{ row: sub }">{{ formatDate(sub.time) }}</template>
                     </el-table-column>
                     <el-table-column label="分数" width="120" align="center">
                       <template #default="{ row: sub }">
-                        <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
-                        <el-tag v-else type="info" size="small">待评分</el-tag>
+                        <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
+                        <el-tag v-else effect="light">待评分</el-tag>
                       </template>
                     </el-table-column>
                     <el-table-column label="操作" width="180" align="center">
                       <template #default="{ row: sub }">
-                        <div class="action-buttons">
-                          <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">
-                            下载
-                          </el-button>
-                          <el-button size="small" type="primary" @click="openGradeDialog(sub)">
-                            评分
-                          </el-button>
+                        <div class="inline-actions">
+                          <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
+                          <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
                         </div>
                       </template>
                     </el-table-column>
@@ -63,104 +95,96 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="student_id" label="学号" min-width="110" />
-            <el-table-column prop="student_name" label="姓名" min-width="90" />
-            <el-table-column label="提交次数" min-width="90" align="center">
+            <el-table-column prop="student_id" label="学号" min-width="120" />
+            <el-table-column prop="student_name" label="姓名" min-width="100" />
+            <el-table-column label="提交次数" min-width="100" align="center">
               <template #default="{ row }">{{ row.submissions.length }} 次</template>
             </el-table-column>
-            <el-table-column label="最新版本" min-width="80" align="center">
+            <el-table-column label="最新版本" min-width="100" align="center">
               <template #default="{ row }">v{{ row.latestVersion }}</template>
             </el-table-column>
-            <el-table-column label="最新时间" min-width="140">
+            <el-table-column label="最新时间" min-width="160">
               <template #default="{ row }">{{ formatDate(row.latestTime) }}</template>
             </el-table-column>
             <el-table-column label="最新分数" min-width="120" align="center">
               <template #default="{ row }">
                 <el-tooltip v-if="row.latestGraded && row.hasNewUngraded" content="学生有新版本，需要进行更新" placement="top">
-                  <el-tag type="warning" size="small" style="cursor: pointer;">{{ row.latestScore }}分</el-tag>
+                  <el-tag type="warning" effect="light" style="cursor: pointer">{{ row.latestScore }}分</el-tag>
                 </el-tooltip>
-                <el-tag v-else-if="row.latestGraded" type="success" size="small">{{ row.latestScore }}分</el-tag>
-                <el-tag v-else type="info" size="small">待评分</el-tag>
+                <el-tag v-else-if="row.latestGraded" type="success" effect="light">{{ row.latestScore }}分</el-tag>
+                <el-tag v-else effect="light">待评分</el-tag>
               </template>
             </el-table-column>
           </el-table>
         </div>
 
-        <!-- 移动端卡片视图 -->
-        <div class="mobile-view" v-loading="loading">
-          <div class="submission-card" v-for="group in groupedSubmissions" :key="group.student_id">
-            <div class="card-header">
-              <div class="student-info">
-                <h3 class="student-name">{{ group.student_name }}</h3>
-                <span class="student-id">{{ group.student_id }}</span>
-              </div>
-              <div class="version-count">{{ group.submissions.length }} 次提交</div>
-            </div>
-            
-            <!-- 多个版本列表 -->
-            <div class="versions-list">
-              <div class="version-item" v-for="sub in group.submissions" :key="sub.id">
-                <div class="version-header">
-                  <div class="version-badge">v{{ sub.version }}</div>
-                  <div class="version-time">{{ formatDate(sub.time) }}</div>
-                  <el-tag v-if="sub.is_graded" type="success" size="small">{{ sub.score }}分</el-tag>
-                  <el-tag v-else type="info" size="small">待评分</el-tag>
+        <div class="table-shell mobile-view">
+          <div class="card-stack">
+            <article v-for="group in groupedSubmissions" :key="group.student_id" class="list-card">
+              <div class="list-card-header">
+                <div>
+                  <h3 class="list-card-title">{{ group.student_name }}</h3>
+                  <p class="list-card-subtitle">{{ group.student_id }}</p>
                 </div>
-                <div class="version-actions">
-                  <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id" style="flex: 1;">
-                    下载
-                  </el-button>
-                  <el-button size="small" type="primary" @click="openGradeDialog(sub)" style="flex: 1;">
-                    评分
-                  </el-button>
+                <span class="submit-pill">{{ group.submissions.length }} 次提交</span>
+              </div>
+
+              <div class="version-stack">
+                <div v-for="sub in group.submissions" :key="sub.id" class="version-item">
+                  <div class="version-meta">
+                    <span class="meta-value">v{{ sub.version }}</span>
+                    <span class="meta-label">{{ formatDate(sub.time) }}</span>
+                  </div>
+                  <div class="inline-actions">
+                    <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
+                    <el-tag v-else effect="light">待评分</el-tag>
+                    <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
+                    <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </article>
           </div>
         </div>
-      </el-main>
-    </el-container>
+      </section>
 
-    <!-- 评分对话框 -->
-    <el-dialog v-model="gradeDialogVisible" title="评分" :width="dialogWidth">
-      <el-form :model="gradeForm" label-width="80px">
-        <el-form-item label="学生">
-          <span>{{ currentStudent?.student_name }} ({{ currentStudent?.student_id }})</span>
-        </el-form-item>
-        <el-form-item label="分数">
-          <el-input-number 
-            v-model="gradeForm.score" 
-            :min="0" 
-            :max="100" 
-            :step="1"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="快捷调整">
-          <el-button-group>
-            <el-button size="small" @click="adjustScore(-5)">-5</el-button>
-            <el-button size="small" @click="adjustScore(-1)">-1</el-button>
-            <el-button size="small" @click="adjustScore(1)">+1</el-button>
-            <el-button size="small" @click="adjustScore(5)">+5</el-button>
-          </el-button-group>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="gradeDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="grading" @click="submitGrade">保存</el-button>
-      </template>
-    </el-dialog>
-  </div>
+      <el-dialog v-model="gradeDialogVisible" title="评分" width="min(520px, 92vw)">
+        <el-form :model="gradeForm" label-width="80px">
+          <el-form-item label="学生">
+            <span>{{ currentStudent?.student_name }} ({{ currentStudent?.student_id }})</span>
+          </el-form-item>
+          <el-form-item label="分数">
+            <el-input-number v-model="gradeForm.score" :min="0" :max="100" :step="1" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="快捷调整">
+            <el-button-group>
+              <el-button size="small" @click="adjustScore(-5)">-5</el-button>
+              <el-button size="small" @click="adjustScore(-1)">-1</el-button>
+              <el-button size="small" @click="adjustScore(1)">+1</el-button>
+              <el-button size="small" @click="adjustScore(5)">+5</el-button>
+            </el-button-group>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <div class="inline-actions" style="justify-content: flex-end">
+            <el-button @click="gradeDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="grading" @click="submitGrade">保存</el-button>
+          </div>
+        </template>
+      </el-dialog>
+    </div>
+  </AppShell>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, reactive, ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { ArrowLeft, CircleCheckFilled, User, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
 
 const route = useRoute()
-const router = useRouter()
 const submissions = ref([])
 const loading = ref(false)
 const downloading = ref(null)
@@ -171,17 +195,12 @@ const grading = ref(false)
 const currentStudent = ref(null)
 const gradeForm = reactive({ score: 85 })
 const tableRef = ref(null)
+const assignmentTitle = ref('查看每位学生的提交版本、下载记录和评分状态。')
 
-function toggleExpand(row) {
-  tableRef.value?.toggleRowExpansion(row)
-}
-
-// 按学生分组的提交记录
 const groupedSubmissions = computed(() => {
   const groups = {}
-  
-  // 按学生ID分组
-  submissions.value.forEach(sub => {
+
+  submissions.value.forEach((sub) => {
     const key = `${sub.student_id}_${sub.student_name}`
     if (!groups[key]) {
       groups[key] = {
@@ -192,56 +211,32 @@ const groupedSubmissions = computed(() => {
     }
     groups[key].submissions.push(sub)
   })
-  
-  // 转换为数组并添加统计信息
-  return Object.values(groups).map(group => {
-    // 按版本号降序排序
-    group.submissions.sort((a, b) => b.version - a.version)
-    
-    const latest = group.submissions[0]
-    const allGraded = group.submissions.every(s => s.is_graded)
-    const someGraded = group.submissions.some(s => s.is_graded)
-    
-    // 找到最近一次被批改的提交（按版本号降序，已排好序）
-    const lastGraded = group.submissions.find(s => s.is_graded)
-    const hasNewUngraded = lastGraded && !latest.is_graded
-    
-    return {
-      ...group,
-      latestVersion: latest.version,
-      latestTime: latest.time,
-      latestGraded: !!lastGraded,
-      latestScore: lastGraded ? lastGraded.score : null,
-      hasNewUngraded,
-      allGraded,
-      someGraded
-    }
-  }).sort((a, b) => {
-    // 按学号排序
-    return a.student_id.localeCompare(b.student_id)
-  })
+
+  return Object.values(groups)
+    .map((group) => {
+      group.submissions.sort((a, b) => b.version - a.version)
+      const latest = group.submissions[0]
+      const lastGraded = group.submissions.find((s) => s.is_graded)
+      const hasNewUngraded = lastGraded && !latest.is_graded
+
+      return {
+        ...group,
+        latestVersion: latest.version,
+        latestTime: latest.time,
+        latestGraded: !!lastGraded,
+        latestScore: lastGraded ? lastGraded.score : null,
+        hasNewUngraded
+      }
+    })
+    .sort((a, b) => a.student_id.localeCompare(b.student_id))
 })
 
-// 响应式窗口尺寸
-const windowWidth = ref(window.innerWidth)
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
+const gradedCount = computed(() => groupedSubmissions.value.filter((group) => group.latestGraded).length)
+const pendingCount = computed(() => Math.max(groupedSubmissions.value.length - gradedCount.value, 0))
+
+function toggleExpand(row) {
+  tableRef.value?.toggleRowExpansion(row)
 }
-
-onMounted(() => {
-  window.addEventListener('resize', handleResize)
-  loadSubmissions()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-})
-
-const dialogWidth = computed(() => {
-  if (windowWidth.value < 576) return '95%'
-  if (windowWidth.value < 768) return '90%'
-  return '480px'
-})
 
 function formatDate(d) {
   if (!d) return '-'
@@ -252,7 +247,7 @@ function formatDate(d) {
   const day = String(date.getDate()).padStart(2, '0')
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
-  
+
   if (year === now.getFullYear()) {
     return `${month}-${day} ${hours}:${minutes}`
   }
@@ -278,7 +273,6 @@ async function submitGrade() {
     })
     ElMessage.success('评分成功')
     gradeDialogVisible.value = false
-    // 刷新列表
     loadSubmissions()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '评分失败')
@@ -337,9 +331,7 @@ async function downloadZip(mode) {
     const url = URL.createObjectURL(res.data)
     const link = document.createElement('a')
     link.href = url
-    const filename = mode === 'latest'
-      ? `HW${route.params.id}_latest_only.zip`
-      : `HW${route.params.id}_all_versions.zip`
+    const filename = mode === 'latest' ? `HW${route.params.id}_latest_only.zip` : `HW${route.params.id}_all_versions.zip`
     link.download = filename
     link.click()
     URL.revokeObjectURL(url)
@@ -355,6 +347,12 @@ async function loadSubmissions() {
   try {
     const res = await api.get(`/admin/assignments/${route.params.id}/submissions`)
     submissions.value = res.data
+
+    const assignmentRes = await api.get('/admin/assignments')
+    const matched = assignmentRes.data.find((item) => String(item.id) === String(route.params.id))
+    if (matched) {
+      assignmentTitle.value = `${matched.title} 的全部提交版本、评分与导出操作。`
+    }
   } catch {
     ElMessage.error('加载提交列表失败')
   } finally {
@@ -366,176 +364,43 @@ onMounted(loadSubmissions)
 </script>
 
 <style scoped>
-.page { min-height: 100vh; background: #f5f7fa; }
-
-.app-header {
-  height: auto !important;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 12px 20px;
-  gap: 12px;
-  flex-wrap: wrap;
+:deep(.clickable-row) {
+  cursor: pointer;
 }
 
-.header-left { flex-shrink: 0; }
-.back-btn .back-icon { display: inline; }
-.back-btn .back-text { display: inline; }
-.header-center { flex: 1; text-align: center; min-width: 0; }
-.title { font-size: 18px; font-weight: 600; color: #303133; }
-.header-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
-.btn-text { display: inline; }
-.btn-icon { display: none; }
-
-.main-content { padding: 20px; overflow-x: hidden; }
-
-.action-buttons { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-
-.desktop-view { display: block; overflow-x: auto; }
-.desktop-view :deep(.el-table) { font-size: 14px; }
-.desktop-view :deep(.clickable-row) { cursor: pointer; }
-.desktop-view :deep(.el-table th) { padding: 8px 0; font-size: 13px; }
-.desktop-view :deep(.el-table td) { padding: 8px 0; }
-.desktop-view :deep(.el-table__cell) { padding-left: 6px; padding-right: 6px; }
-
-.mobile-view { display: none; }
-
-/* 桌面端展开行样式 */
 .expand-content {
-  padding: 12px 20px;
-  background: #fafafa;
+  padding: 12px 0;
+  background: #f8fafc;
 }
 
-.expand-content :deep(.el-table) {
-  background: transparent;
-  font-size: 13px;
-}
-
-.expand-content :deep(.el-table::before) {
-  display: none;
-}
-
-.expand-content :deep(.el-table th) {
-  background: #f0f0f0;
-}
-
-/* 移动端卡片样式 */
-.submission-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
+.submit-pill {
+  display: inline-flex;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #e4e7ed;
-  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 800;
 }
 
-.student-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
-.student-name { font-size: 16px; font-weight: 600; color: #303133; margin: 0; }
-.student-id { font-size: 13px; color: #606266; background: #f0f0f0; padding: 2px 10px; border-radius: 12px; }
-.version-count { font-size: 13px; color: #67c23a; background: #f0f9ff; padding: 4px 12px; border-radius: 12px; font-weight: 500; }
-
-/* 版本列表 */
-.versions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.version-stack {
+  display: grid;
+  gap: 10px;
 }
 
 .version-item {
-  background: #f8f9fa;
-  border-radius: 6px;
-  padding: 12px;
-  border: 1px solid #e8e8e8;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.82);
 }
 
-.version-header {
+.version-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.version-badge {
-  font-size: 12px;
-  color: #409eff;
-  background: #ecf5ff;
-  padding: 3px 10px;
-  border-radius: 10px;
-  font-weight: 500;
-}
-
-.version-time {
-  font-size: 12px;
-  color: #606266;
-  flex: 1;
-}
-
-.version-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.card-body { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.info-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
-.info-row:last-child { border-bottom: none; }
-.info-row .label { font-size: 13px; color: #606266; font-weight: 500; }
-.info-row .value { font-size: 13px; color: #303133; }
-
-.card-actions { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid #ebeef5; }
-
-@media (min-width: 768px) {
-  .desktop-view { display: block; }
-  .mobile-view { display: none; }
-}
-
-@media (min-width: 768px) and (max-width: 1200px) {
-  .app-header { padding: 10px 14px; }
-  .main-content { padding: 16px; }
-  .title { font-size: 16px; }
-  .header-actions :deep(.el-button) { padding: 8px 10px; font-size: 12px; }
-  .desktop-view :deep(.el-table) { font-size: 13px; }
-  .desktop-view :deep(.el-table th),
-  .desktop-view :deep(.el-table td) { padding: 6px 0; }
-  .desktop-view :deep(.el-table__cell) { padding-left: 4px; padding-right: 4px; }
-}
-
-@media (max-width: 768px) {
-  .app-header { padding: 10px 12px; gap: 8px; }
-  .header-center { order: -1; flex-basis: 100%; text-align: left; margin-bottom: 8px; }
-  .title { font-size: 16px; }
-  .header-left { order: 1; }
-  .header-actions { order: 2; width: 100%; justify-content: space-between; gap: 4px; }
-  .header-actions :deep(.el-button) { flex: 1; padding: 6px 8px; font-size: 12px; min-width: 0; }
-  .back-btn { padding: 8px 12px; }
-  .btn-text { display: none; }
-  .btn-icon { display: inline; font-size: 16px; }
-  .main-content { padding: 12px; }
-  .desktop-view { display: none; }
-  .mobile-view { display: block; }
-}
-
-@media (max-width: 576px) {
-  .app-header { padding: 8px 10px; }
-  .title { font-size: 15px; }
-  .back-btn { padding: 6px 10px; font-size: 14px; }
-  .back-btn .back-text { display: none; }
-  .main-content { padding: 10px; }
-  .submission-card { padding: 12px; }
-  .student-name { font-size: 15px; }
-  .student-id, .info-row .label, .info-row .value { font-size: 12px; }
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 </style>

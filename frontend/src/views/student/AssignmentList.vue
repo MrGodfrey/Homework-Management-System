@@ -1,66 +1,91 @@
 <template>
-  <div class="page">
-    <el-container>
-      <el-header class="app-header">
-        <span class="title">作业与互动</span>
-        <div class="user-info">
-          <span v-if="userInfo" class="user-name">{{ userInfo.name }} <span class="user-id">({{ userInfo.student_id }})</span></span>
-          <el-button type="danger" plain size="small" @click="logout" class="logout-btn">
-            <span class="btn-text">退出登录</span>
-            <span class="btn-icon">⎋</span>
-          </el-button>
-        </div>
-      </el-header>
-      <el-main class="main-content">
-        <!-- 互动统计 -->
-        <div class="interaction-summary" @click="showInteractionDetail = true" style="cursor:pointer;">
-          <span class="interaction-label">📢 课堂互动次数：</span>
-          <span class="interaction-count">{{ interactionCount }}</span>
-          <span class="interaction-hint">（点击查看详情）</span>
+  <AppShell role="student" :display-name="userInfo?.name" :display-meta="userInfo?.student_id">
+    <div class="page-stack">
+      <section class="page-hero">
+        <div>
+          <span class="page-eyebrow">Student Workspace</span>
+          <h1 class="page-title">我的作业</h1>
+          <p class="page-subtitle">查看并提交课程任务，跟进作业进度与反馈结果。</p>
         </div>
 
-        <!-- 互动详情弹窗 -->
-        <el-dialog v-model="showInteractionDetail" title="课堂互动记录" width="500px">
-          <el-table :data="interactionItems" style="width:100%" max-height="400">
-            <el-table-column label="时间" min-width="160">
-              <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column label="备注" min-width="200" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.note || '-' }}</template>
-            </el-table-column>
-          </el-table>
-          <div v-if="interactionItems.length === 0" style="text-align:center;padding:20px;color:#909399;">暂无互动记录</div>
-        </el-dialog>
+        <div class="page-hero-actions">
+          <button type="button" class="metric-card" @click="showInteractionDetail = true">
+            <div class="metric-card-icon">
+              <el-icon :size="20"><DataBoard /></el-icon>
+            </div>
+            <div>
+              <p class="metric-card-label">课堂互动次数</p>
+              <p class="metric-card-value">{{ interactionCount }} <small>点击查看详情</small></p>
+            </div>
+          </button>
+        </div>
+      </section>
 
-        <!-- 桌面/平板端表格视图 -->
-        <div class="desktop-view">
-          <el-table :data="assignments" v-loading="loading" style="width:100%">
-            <el-table-column prop="title" label="作业名称" min-width="150" show-overflow-tooltip />
-            <el-table-column label="截止时间" min-width="140">
+      <section class="summary-grid">
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><Tickets /></el-icon>
+            <span>全部作业</span>
+          </div>
+          <div class="summary-tile-value">{{ assignments.length }}</div>
+          <div class="summary-tile-hint">当前学期已发布的任务数量</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><CircleCheckFilled /></el-icon>
+            <span>已提交</span>
+          </div>
+          <div class="summary-tile-value">{{ submittedCount }}</div>
+          <div class="summary-tile-hint">已有版本记录的作业</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><WarningFilled /></el-icon>
+            <span>待处理</span>
+          </div>
+          <div class="summary-tile-value">{{ pendingCount }}</div>
+          <div class="summary-tile-hint">尚未提交或仍待完成</div>
+        </article>
+      </section>
+
+      <section class="surface-card soft">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">任务列表</h2>
+            <p class="section-subtitle">保留原有提交、历史查看、互动记录与成绩展示流程。</p>
+          </div>
+        </div>
+
+        <div class="table-shell desktop-view">
+          <el-table :data="assignments" v-loading="loading" style="width: 100%">
+            <el-table-column prop="title" label="作业名称" min-width="220" show-overflow-tooltip />
+            <el-table-column label="截止时间" min-width="160">
               <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
             </el-table-column>
-            <el-table-column label="迟交" min-width="60" align="center">
+            <el-table-column label="迟交" min-width="90" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.allow_late ? 'success' : 'danger'" size="small">
-                  {{ row.allow_late ? '是' : '否' }}
+                <el-tag :type="row.allow_late ? 'success' : 'danger'" effect="light">
+                  {{ row.allow_late ? '允许' : '禁止' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="提交状态" min-width="100" align="center">
+            <el-table-column label="提交状态" min-width="140" align="center">
               <template #default="{ row }">
-                <el-tag v-if="row.status.submitted" type="success">已提交 v{{ row.status.version_no }}</el-tag>
-                <el-tag v-else type="info">未提交</el-tag>
+                <el-tag v-if="row.status.submitted" type="success" effect="light">已提交 v{{ row.status.version_no }}</el-tag>
+                <el-tag v-else effect="light">未提交</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="最终得分" min-width="90" align="center">
+            <el-table-column label="最终得分" min-width="120" align="center">
               <template #default="{ row }">
                 <span v-if="row.status.is_graded" class="score-text">{{ row.status.score }}</span>
-                <span v-else style="color: #909399;">{{ row.status.submitted ? '待批改' : '-' }}</span>
+                <span v-else class="muted-copy">{{ row.status.submitted ? '待批改' : '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="150">
+            <el-table-column label="操作" min-width="170">
               <template #default="{ row }">
-                <div class="action-buttons">
+                <div class="inline-actions">
                   <el-button size="small" type="primary" @click="$router.push(`/assignments/${row.id}`)">提交</el-button>
                   <el-button size="small" @click="$router.push(`/assignments/${row.id}/submissions`)">历史</el-button>
                 </div>
@@ -69,56 +94,68 @@
           </el-table>
         </div>
 
-        <!-- 移动端卡片视图 -->
-        <div class="mobile-view" v-loading="loading">
-          <div class="assignment-card" v-for="assignment in assignments" :key="assignment.id">
-            <div class="card-header">
-              <h3 class="card-title">{{ assignment.title }}</h3>
-              <el-tag v-if="assignment.status.submitted" type="success" size="small">
-                v{{ assignment.status.version_no }}
-              </el-tag>
-              <el-tag v-else type="info" size="small">未提交</el-tag>
-            </div>
-            <div class="card-body">
-              <div class="card-row">
-                <span class="label">截止时间:</span>
-                <span class="value">{{ formatDate(assignment.deadline) }}</span>
-              </div>
-              <div class="card-row">
-                <span class="label">允许迟交:</span>
-                <el-tag :type="assignment.allow_late ? 'success' : 'danger'" size="small">
-                  {{ assignment.allow_late ? '是' : '否' }}
-                </el-tag>
-              </div>
-              <div class="card-row">
-                <span class="label">最终得分:</span>
-                <span v-if="assignment.status.is_graded" class="score-text">{{ assignment.status.score }}</span>
-                <span v-else style="color: #909399;">{{ assignment.status.submitted ? '待批改' : '-' }}</span>
-              </div>
-            </div>
-            <div class="card-actions">
-              <el-button size="small" type="primary" @click="$router.push(`/assignments/${assignment.id}`)" style="flex: 1;">
-                提交作业
-              </el-button>
-              <el-button size="small" @click="$router.push(`/assignments/${assignment.id}/submissions`)" style="flex: 1;">
-                提交历史
-              </el-button>
-            </div>
+        <div class="table-shell mobile-view">
+          <div v-if="loading" class="card-stack">
+            <el-skeleton v-for="item in 3" :key="item" animated :rows="4" />
           </div>
-          <div class="empty-state" v-if="!loading && assignments.length === 0">
-            <p>暂无作业</p>
+
+          <div v-else-if="assignments.length === 0" class="empty-panel">暂无作业</div>
+
+          <div v-else class="card-stack">
+            <article v-for="assignment in assignments" :key="assignment.id" class="list-card">
+              <div class="list-card-header">
+                <div>
+                  <h3 class="list-card-title">{{ assignment.title }}</h3>
+                  <p class="list-card-subtitle">截止于 {{ formatDate(assignment.deadline) }}</p>
+                </div>
+                <el-tag v-if="assignment.status.submitted" type="success" effect="light">v{{ assignment.status.version_no }}</el-tag>
+                <el-tag v-else effect="light">未提交</el-tag>
+              </div>
+
+              <div class="info-list compact">
+                <div class="meta-pair">
+                  <span class="meta-label">迟交</span>
+                  <span class="meta-value">{{ assignment.allow_late ? '允许' : '禁止' }}</span>
+                </div>
+                <div class="meta-pair">
+                  <span class="meta-label">最终得分</span>
+                  <span class="meta-value">
+                    {{ assignment.status.is_graded ? assignment.status.score : assignment.status.submitted ? '待批改' : '-' }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="inline-actions card-actions">
+                <el-button size="small" type="primary" style="flex: 1" @click="$router.push(`/assignments/${assignment.id}`)">提交作业</el-button>
+                <el-button size="small" style="flex: 1" @click="$router.push(`/assignments/${assignment.id}/submissions`)">提交历史</el-button>
+              </div>
+            </article>
           </div>
         </div>
-      </el-main>
-    </el-container>
-  </div>
+      </section>
+
+      <el-dialog v-model="showInteractionDetail" title="课堂互动记录" width="min(520px, 92vw)">
+        <el-table :data="interactionItems" style="width: 100%" max-height="400">
+          <el-table-column label="时间" min-width="170">
+            <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="备注" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.note || '-' }}</template>
+          </el-table-column>
+        </el-table>
+        <div v-if="interactionItems.length === 0" class="dialog-empty">暂无互动记录</div>
+      </el-dialog>
+    </div>
+  </AppShell>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted } from 'vue'
+import { CircleCheckFilled, DataBoard, Tickets, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import AppShell from '@/components/AppShell.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 import api from '@/utils/api'
 
 const router = useRouter()
@@ -130,19 +167,11 @@ const interactionCount = ref(0)
 const interactionItems = ref([])
 const showInteractionDetail = ref(false)
 
-// 响应式窗口尺寸
-const windowWidth = ref(window.innerWidth)
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
+const submittedCount = computed(() => assignments.value.filter((item) => item.status?.submitted).length)
+const pendingCount = computed(() => Math.max(assignments.value.length - submittedCount.value, 0))
 
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadData()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 
 function formatDate(d) {
@@ -154,8 +183,7 @@ function formatDate(d) {
   const day = String(date.getDate()).padStart(2, '0')
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
-  
-  // 如果是今年，不显示年份
+
   if (year === now.getFullYear()) {
     return `${month}-${day} ${hours}:${minutes}`
   }
@@ -170,11 +198,9 @@ function logout() {
 async function loadData() {
   loading.value = true
   try {
-    // 获取用户信息
     const userRes = await api.get('/assignments/me')
     userInfo.value = userRes.data
-    
-    // 获取作业列表和互动记录
+
     const [res, intRes] = await Promise.all([
       api.get('/assignments'),
       api.get('/assignments/interactions')
@@ -191,362 +217,25 @@ async function loadData() {
 </script>
 
 <style scoped>
-/* 基础样式 */
-.page { 
-  min-height: 100vh; 
-  background: #f5f7fa; 
+.score-text {
+  color: var(--brand);
+  font-weight: 800;
 }
 
-.app-header {
-  height: auto !important;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 12px 20px;
-  gap: 16px;
-  flex-wrap: wrap;
+.muted-copy {
+  color: var(--text-soft);
 }
 
-.title { 
-  font-size: 18px; 
-  font-weight: 600; 
-  color: #303133; 
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-name {
-  color: #606266;
-  font-size: 14px;
-}
-
-.user-id {
-  color: #909399;
-  font-size: 13px;
-}
-
-.logout-btn .btn-text {
-  display: inline;
-}
-
-.logout-btn .btn-icon {
-  display: none;
-}
-
-.main-content {
-  padding: 20px;
-  overflow-x: hidden;
-}
-
-.interaction-summary {
-  background: #fff;
-  border-radius: 8px;
-  padding: 14px 20px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: box-shadow 0.2s;
-}
-
-.interaction-summary:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.interaction-label {
-  font-size: 15px;
-  color: #606266;
-  font-weight: 500;
-}
-
-.interaction-count {
-  font-size: 20px;
-  font-weight: 700;
-  color: #409eff;
-}
-
-.interaction-hint {
-  font-size: 12px;
-  color: #909399;
-}
-
-/* 桌面/平板端表格视图 */
-.desktop-view {
-  display: block;
-  overflow-x: auto;
-  width: 100%;
-}
-
-.desktop-view :deep(.el-table) {
-  font-size: 14px;
-  min-width: 100%;
-}
-
-.desktop-view :deep(.el-table th) {
-  padding: 8px 0;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.desktop-view :deep(.el-table td) {
-  padding: 8px 0;
-}
-
-.desktop-view :deep(.el-button--small) {
-  padding: 5px 10px;
-  font-size: 13px;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-/* 移动端卡片视图 */
-.mobile-view {
-  display: none;
-}
-
-.assignment-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s;
-}
-
-.assignment-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 12px;
-}
-
-.card-title {
-  font-size: 16px;
+.dialog-empty {
+  padding: 18px 0 4px;
+  text-align: center;
+  color: var(--text-muted);
   font-weight: 600;
-  color: #303133;
-  margin: 0;
-  flex: 1;
-  word-break: break-word;
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.card-row {
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  gap: 8px;
-}
-
-.card-row .label {
-  color: #606266;
-  font-weight: 500;
-  min-width: 70px;
-  flex-shrink: 0;
-}
-
-.card-row .value {
-  color: #303133;
-  flex: 1;
-  word-break: break-word;
 }
 
 .card-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #ebeef5;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 平板/桌面端 (>= 768px) */
-@media (min-width: 768px) {
-  .desktop-view {
-    display: block;
-  }
-  
-  .mobile-view {
-    display: none;
-  }
-  
-  .desktop-view :deep(.el-table__cell) {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-}
-
-/* 中等宽度屏幕优化 (768px - 1200px) */
-@media (min-width: 768px) and (max-width: 1200px) {
-  .app-header {
-    padding: 10px 14px;
-  }
-  
-  .main-content {
-    padding: 16px;
-  }
-  
-  .title {
-    font-size: 16px;
-  }
-  
-  .user-name {
-    font-size: 13px;
-  }
-  
-  .desktop-view :deep(.el-table) {
-    font-size: 13px;
-  }
-  
-  .desktop-view :deep(.el-table th),
-  .desktop-view :deep(.el-table td) {
-    padding: 6px 0;
-  }
-  
-  .desktop-view :deep(.el-button--small) {
-    padding: 4px 8px;
-    font-size: 12px;
-  }
-  
-  .action-buttons {
-    gap: 4px;
-  }
-}
-
-/* 移动端 (< 768px) */
-@media (max-width: 768px) {
-  .app-header {
-    padding: 10px 12px;
-    gap: 8px;
-  }
-
-  .title {
-    font-size: 16px;
-  }
-
-  .user-name {
-    font-size: 13px;
-  }
-
-  .user-id {
-    display: none;
-  }
-
-  .logout-btn {
-    padding: 8px 12px;
-  }
-
-  .logout-btn .btn-text {
-    display: none;
-  }
-
-  .logout-btn .btn-icon {
-    display: inline;
-    font-size: 16px;
-  }
-
-  .main-content {
-    padding: 12px;
-  }
-
-  /* 切换到卡片视图 */
-  .desktop-view {
-    display: none;
-  }
-
-  .mobile-view {
-    display: block;
-  }
-}
-
-/* 小手机 (< 576px) */
-@media (max-width: 576px) {
-  .app-header {
-    padding: 8px 10px;
-  }
-
-  .title {
-    font-size: 15px;
-  }
-
-  .user-name {
-    font-size: 12px;
-  }
-
-  .logout-btn {
-    padding: 6px 10px;
-    font-size: 14px;
-  }
-
-  .main-content {
-    padding: 10px;
-  }
-
-  .assignment-card {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-
-  .card-title {
-    font-size: 15px;
-  }
-
-  .card-row {
-    font-size: 13px;
-  }
-
-  .card-row .label {
-    min-width: 60px;
-    font-size: 12px;
-  }
-
-  .card-actions :deep(.el-button) {
-    font-size: 13px;
-    padding: 6px 12px;
-  }
-}
-
-/* 横屏手机优化 */
-@media (max-width: 768px) and (orientation: landscape) {
-  .app-header {
-    min-height: 50px;
-  }
-
-  .assignment-card {
-    padding: 10px;
-  }
-}
-
-.score-text {
-  font-weight: 600;
-  color: #409eff;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 </style>

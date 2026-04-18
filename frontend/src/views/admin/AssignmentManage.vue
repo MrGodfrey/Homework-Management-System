@@ -1,220 +1,224 @@
 <template>
-  <div class="page">
-    <el-container>
-      <el-header class="app-header">
-        <div class="header-left">
-          <el-button @click="$router.push('/admin/dashboard')" class="back-btn">
-            <span class="back-icon">←</span>
-            <span class="back-text">返回看板</span>
-          </el-button>
+  <AppShell role="instructor" display-name="教师账号" display-meta="作业发布与批改">
+    <div class="page-stack">
+      <section class="page-hero">
+        <div>
+          <span class="page-eyebrow">Assignment Management</span>
+          <h1 class="page-title">作业管理</h1>
+          <p class="page-subtitle">发布新作业、维护附件与格式规则，并保留原有导出、编辑和强制删除流程。</p>
         </div>
-        <div class="header-center">
-          <span class="title">作业管理</span>
-          <span class="total-students" v-if="totalStudents > 0">({{ totalStudents }}人)</span>
+
+        <div class="page-hero-actions">
+          <el-button type="success" @click="exportAllGradesCSV">导出成绩</el-button>
+          <el-button type="primary" @click="openCreate">新建作业</el-button>
         </div>
-        <div class="header-actions">
-          <el-button type="success" @click="exportAllGradesCSV" class="export-btn">
-            <span class="btn-text">导出成绩</span>
-            <span class="btn-icon">📊</span>
-          </el-button>
-          <el-button type="primary" @click="openCreate" class="create-btn">
-            <span class="btn-text">+ 新建作业</span>
-            <span class="btn-icon">+</span>
-          </el-button>
+      </section>
+
+      <section class="summary-grid">
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><Document /></el-icon>
+            <span>作业总数</span>
+          </div>
+          <div class="summary-tile-value">{{ assignments.length }}</div>
+          <div class="summary-tile-hint">当前已创建的全部作业</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><User /></el-icon>
+            <span>学生人数</span>
+          </div>
+          <div class="summary-tile-value">{{ totalStudents }}</div>
+          <div class="summary-tile-hint">用于计算提交覆盖率</div>
+        </article>
+
+        <article class="summary-tile">
+          <div class="summary-tile-label">
+            <el-icon><FolderOpened /></el-icon>
+            <span>附件能力</span>
+          </div>
+          <div class="summary-tile-value">{{ attachmentReadyCount }}</div>
+          <div class="summary-tile-hint">已进入可维护附件状态的作业</div>
+        </article>
+      </section>
+
+      <section class="surface-card soft">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">作业列表</h2>
+            <p class="section-subtitle">桌面端保留原有表格交互，移动端切换为信息卡片。</p>
+          </div>
         </div>
-      </el-header>
-      <el-main class="main-content">
-        <!-- 桌面/平板端表格视图 -->
-        <div class="desktop-view">
-          <el-table :data="assignments" v-loading="loading" style="width:100%" :flexible="true">
-            <el-table-column prop="id" label="ID" min-width="50" />
-            <el-table-column prop="title" label="作业名称" min-width="150" show-overflow-tooltip />
-            <el-table-column label="截止时间" min-width="140">
+
+        <div class="table-shell desktop-view">
+          <el-table :data="assignments" v-loading="loading" style="width: 100%" :flexible="true">
+            <el-table-column prop="id" label="ID" min-width="60" />
+            <el-table-column prop="title" label="作业名称" min-width="180" show-overflow-tooltip />
+            <el-table-column label="截止时间" min-width="160">
               <template #default="{ row }">{{ formatDate(row.deadline) }}</template>
             </el-table-column>
-            <el-table-column label="迟交" min-width="60" align="center">
+            <el-table-column label="迟交" min-width="90" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.allow_late ? 'success' : 'danger'" size="small">
-                  {{ row.allow_late ? '是' : '否' }}
+                <el-tag :type="row.allow_late ? 'success' : 'danger'" effect="light">
+                  {{ row.allow_late ? '允许' : '禁止' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="已提交" min-width="70" align="center">
-              <template #default="{ row }">
-                <span>{{ row.submitted_count || 0 }}</span>
-              </template>
+            <el-table-column label="已提交" min-width="90" align="center">
+              <template #default="{ row }">{{ row.submitted_count || 0 }}</template>
             </el-table-column>
-            <el-table-column label="已评分" min-width="70" align="center">
-              <template #default="{ row }">
-                <span>{{ row.graded_count || 0 }}</span>
-              </template>
+            <el-table-column label="已评分" min-width="90" align="center">
+              <template #default="{ row }">{{ row.graded_count || 0 }}</template>
             </el-table-column>
-            <el-table-column prop="file_rules" label="文件规则" min-width="100" show-overflow-tooltip />
-            <el-table-column label="操作" min-width="150">
+            <el-table-column prop="file_rules" label="文件规则" min-width="150" show-overflow-tooltip />
+            <el-table-column label="操作" min-width="170">
               <template #default="{ row }">
-                <div class="action-buttons">
+                <div class="inline-actions">
                   <el-button size="small" @click="openEdit(row)">编辑</el-button>
-                  <el-button
-                    size="small"
-                    type="info"
-                    @click="$router.push(`/admin/assignments/${row.id}/submissions`)"
-                  >查看</el-button>
+                  <el-button size="small" type="info" @click="$router.push(`/admin/assignments/${row.id}/submissions`)">查看</el-button>
                 </div>
               </template>
             </el-table-column>
           </el-table>
         </div>
 
-        <!-- 移动端卡片视图 -->
-        <div class="mobile-view" v-loading="loading">
-          <div class="assignment-card" v-for="assignment in assignments" :key="assignment.id">
-            <div class="card-header">
-              <h3 class="card-title">{{ assignment.title }}</h3>
-              <span class="card-id">#{{ assignment.id }}</span>
-            </div>
-            <div class="card-body">
-              <div class="card-row">
-                <span class="label">截止时间:</span>
-                <span class="value">{{ formatDate(assignment.deadline) }}</span>
-              </div>
-              <div class="card-row">
-                <span class="label">允许迟交:</span>
-                <el-tag :type="assignment.allow_late ? 'success' : 'danger'" size="small">
-                  {{ assignment.allow_late ? '是' : '否' }}
-                </el-tag>
-              </div>
-              <div class="card-row">
-                <span class="label">提交情况:</span>
-                <span class="value stats">
-                  已提交 <strong>{{ assignment.submitted_count || 0 }}</strong> / 
-                  已评分 <strong>{{ assignment.graded_count || 0 }}</strong>
-                </span>
-              </div>
-              <div class="card-row" v-if="assignment.file_rules">
-                <span class="label">文件规则:</span>
-                <span class="value file-rules">{{ assignment.file_rules }}</span>
-              </div>
-            </div>
-            <div class="card-actions">
-              <el-button size="small" @click="openEdit(assignment)" style="flex: 1;">编辑</el-button>
-              <el-button
-                size="small"
-                type="info"
-                @click="$router.push(`/admin/assignments/${assignment.id}/submissions`)"
-                style="flex: 1;"
-              >查看提交</el-button>
-            </div>
+        <div class="table-shell mobile-view">
+          <div v-if="loading" class="card-stack">
+            <el-skeleton v-for="item in 3" :key="item" animated :rows="4" />
           </div>
-          <div class="empty-state" v-if="!loading && assignments.length === 0">
-            <p>暂无作业</p>
-          </div>
-        </div>
-      </el-main>
-    </el-container>
 
-    <el-dialog 
-      v-model="dialogVisible" 
-      :title="editingId ? '编辑作业' : '新建作业'" 
-      :width="dialogWidth"
-      class="assignment-dialog"
-    >
-      <el-form :model="form" :label-width="formLabelWidth">
-        <el-form-item label="作业名称" required>
-          <el-input v-model="form.title" placeholder="请输入作业名称" />
-        </el-form-item>
-        <el-form-item label="作业说明">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="截止时间" required>
-          <el-date-picker
-            v-model="form.deadline"
-            type="datetime"
-            placeholder="选择截止日期时间"
-            style="width:100%"
-          />
-        </el-form-item>
-        <el-form-item label="允许迟交">
-          <el-switch v-model="form.allow_late" />
-        </el-form-item>
-        <el-form-item label="允许格式">
-          <el-checkbox-group v-model="selectedFormats" class="format-checkboxes">
-            <el-checkbox label=".pdf">PDF</el-checkbox>
-            <el-checkbox label=".docx">Word</el-checkbox>
-            <el-checkbox label=".md">Markdown</el-checkbox>
-            <el-checkbox label=".txt">文本</el-checkbox>
-            <el-checkbox label=".ipynb">Jupyter</el-checkbox>
-            <el-checkbox label=".py">Python</el-checkbox>
-            <el-checkbox label=".zip">压缩包</el-checkbox>
-          </el-checkbox-group>
-          <el-input 
-            v-model="form.file_rules" 
-            placeholder="或手动输入，逗号分隔" 
-            style="margin-top:8px"
-          />
-        </el-form-item>
-        <el-form-item label="作业附件" v-if="editingId">
-          <div style="width: 100%;">
-            <el-upload
-              :auto-upload="false"
-              :on-change="handleAttachmentChange"
-              :show-file-list="false"
-              accept="*"
-              style="margin-bottom: 10px;"
-              data-testid="admin-attachment-upload"
-            >
-              <el-button size="small" type="primary" :loading="uploadingAttachment">
-                <span v-if="!uploadingAttachment">上传附件</span>
-                <span v-else>上传中...</span>
-              </el-button>
-            </el-upload>
-            <div v-if="attachmentFiles.length > 0" class="attachment-list">
-              <div v-for="file in attachmentFiles" :key="file.id" class="attachment-item">
-                <span class="file-name">📎 {{ file.filename }}</span>
-                <div class="file-actions">
-                  <el-button size="small" link @click="downloadAttachment(file)">下载</el-button>
-                  <el-button size="small" link type="danger" @click="deleteAttachment(file.id)">删除</el-button>
+          <div v-else-if="assignments.length === 0" class="empty-panel">暂无作业</div>
+
+          <div v-else class="card-stack">
+            <article v-for="assignment in assignments" :key="assignment.id" class="list-card">
+              <div class="list-card-header">
+                <div>
+                  <h3 class="list-card-title">{{ assignment.title }}</h3>
+                  <p class="list-card-subtitle">截止于 {{ formatDate(assignment.deadline) }}</p>
+                </div>
+                <span class="id-pill">#{{ assignment.id }}</span>
+              </div>
+
+              <div class="info-list compact">
+                <div class="meta-pair">
+                  <span class="meta-label">迟交</span>
+                  <span class="meta-value">{{ assignment.allow_late ? '允许' : '禁止' }}</span>
+                </div>
+                <div class="meta-pair">
+                  <span class="meta-label">提交</span>
+                  <span class="meta-value">已提交 {{ assignment.submitted_count || 0 }} / 已评分 {{ assignment.graded_count || 0 }}</span>
+                </div>
+                <div v-if="assignment.file_rules" class="meta-pair">
+                  <span class="meta-label">文件规则</span>
+                  <span class="meta-value mono-text">{{ assignment.file_rules }}</span>
                 </div>
               </div>
-            </div>
-            <div v-else class="no-attachments">暂无附件</div>
-          </div>
-        </el-form-item>
-        <el-alert 
-          v-if="!editingId" 
-          title="提示：请先保存作业后，再上传附件文件" 
-          type="info" 
-          :closable="false"
-          style="margin-bottom: 10px;"
-        />
-      </el-form>
-      <template #footer>
-        <div style="display: flex; justify-content: space-between; width: 100%;">
-          <div>
-            <el-button 
-              v-if="editingId" 
-              type="danger" 
-              plain
-              :loading="deleting" 
-              @click="handleDelete"
-            >删除作业</el-button>
-          </div>
-          <div>
-            <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="saving" @click="saveAssignment">保存</el-button>
+
+              <div class="inline-actions card-actions">
+                <el-button size="small" style="flex: 1" @click="openEdit(assignment)">编辑</el-button>
+                <el-button size="small" type="info" style="flex: 1" @click="$router.push(`/admin/assignments/${assignment.id}/submissions`)">查看提交</el-button>
+              </div>
+            </article>
           </div>
         </div>
-      </template>
-    </el-dialog>
-  </div>
+      </section>
+
+      <el-dialog v-model="dialogVisible" :title="editingId ? '编辑作业' : '新建作业'" width="min(720px, 94vw)" class="assignment-dialog">
+        <el-form :model="form" label-width="96px">
+          <el-form-item label="作业名称" required>
+            <el-input v-model="form.title" placeholder="请输入作业名称" />
+          </el-form-item>
+          <el-form-item label="作业说明">
+            <el-input v-model="form.description" type="textarea" :rows="4" placeholder="可选" />
+          </el-form-item>
+          <el-form-item label="截止时间" required>
+            <el-date-picker
+              v-model="form.deadline"
+              type="datetime"
+              placeholder="选择截止日期时间"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item label="允许迟交">
+            <el-switch v-model="form.allow_late" />
+          </el-form-item>
+          <el-form-item label="允许格式">
+            <el-checkbox-group v-model="selectedFormats" class="format-checkboxes">
+              <el-checkbox label=".pdf">PDF</el-checkbox>
+              <el-checkbox label=".docx">Word</el-checkbox>
+              <el-checkbox label=".md">Markdown</el-checkbox>
+              <el-checkbox label=".txt">文本</el-checkbox>
+              <el-checkbox label=".ipynb">Jupyter</el-checkbox>
+              <el-checkbox label=".py">Python</el-checkbox>
+              <el-checkbox label=".zip">压缩包</el-checkbox>
+            </el-checkbox-group>
+            <el-input v-model="form.file_rules" placeholder="或手动输入，逗号分隔" style="margin-top: 10px" />
+          </el-form-item>
+          <el-form-item label="作业附件" v-if="editingId">
+            <div class="attachment-panel">
+              <el-upload
+                :auto-upload="false"
+                :on-change="handleAttachmentChange"
+                :show-file-list="false"
+                accept="*"
+                data-testid="admin-attachment-upload"
+              >
+                <el-button size="small" type="primary" :loading="uploadingAttachment">
+                  {{ uploadingAttachment ? '上传中...' : '上传附件' }}
+                </el-button>
+              </el-upload>
+
+              <div v-if="attachmentFiles.length > 0" class="attachment-stack">
+                <div v-for="file in attachmentFiles" :key="file.id" class="attachment-item">
+                  <span class="attachment-name">📎 {{ file.filename }}</span>
+                  <div class="inline-actions">
+                    <el-button size="small" text @click="downloadAttachment(file)">下载</el-button>
+                    <el-button size="small" text type="danger" @click="deleteAttachment(file.id)">删除</el-button>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-inline">暂无附件</div>
+            </div>
+          </el-form-item>
+          <el-alert
+            v-if="!editingId"
+            title="提示：请先保存作业后，再上传附件文件"
+            type="info"
+            :closable="false"
+          />
+        </el-form>
+        <template #footer>
+          <div class="dialog-footer">
+            <div>
+              <el-button
+                v-if="editingId"
+                type="danger"
+                plain
+                :loading="deleting"
+                @click="handleDelete"
+              >
+                删除作业
+              </el-button>
+            </div>
+            <div class="inline-actions">
+              <el-button @click="dialogVisible = false">取消</el-button>
+              <el-button type="primary" :loading="saving" @click="saveAssignment">保存</el-button>
+            </div>
+          </div>
+        </template>
+      </el-dialog>
+    </div>
+  </AppShell>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { Document, FolderOpened, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
 
-const router = useRouter()
 const assignments = ref([])
 const totalStudents = ref(0)
 const loading = ref(false)
@@ -224,43 +228,20 @@ const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
 const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
-const attachmentFiles = ref([])  // 作业附件列表
-const uploadingAttachment = ref(false)  // 是否正在上传附件
+const attachmentFiles = ref([])
+const uploadingAttachment = ref(false)
 
-// 响应式窗口尺寸
-const windowWidth = ref(window.innerWidth)
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
+const attachmentReadyCount = computed(() => assignments.value.filter((item) => item.id).length)
 
-onMounted(() => {
-  window.addEventListener('resize', handleResize)
-  loadAssignments()
-  loadTotalStudents()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-})
-
-// 响应式计算属性
-const dialogWidth = computed(() => {
-  if (windowWidth.value < 576) return '95%'
-  if (windowWidth.value < 768) return '90%'
-  return '520px'
-})
-
-const formLabelWidth = computed(() => {
-  if (windowWidth.value < 576) return '80px'
-  return '100px'
-})
-
-// 监听勾选变化，自动更新 file_rules
-watch(selectedFormats, (newVal) => {
-  if (newVal.length > 0) {
-    form.file_rules = newVal.join(',')
-  }
-}, { deep: true })
+watch(
+  selectedFormats,
+  (newVal) => {
+    if (newVal.length > 0) {
+      form.file_rules = newVal.join(',')
+    }
+  },
+  { deep: true }
+)
 
 function formatDate(d) {
   if (!d) return '-'
@@ -271,8 +252,7 @@ function formatDate(d) {
   const day = String(date.getDate()).padStart(2, '0')
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
-  
-  // 如果是今年，不显示年份
+
   if (year === now.getFullYear()) {
     return `${month}-${day} ${hours}:${minutes}`
   }
@@ -282,7 +262,13 @@ function formatDate(d) {
 function openCreate() {
   editingId.value = null
   attachmentFiles.value = []
-  Object.assign(form, { title: '', description: '', deadline: null, allow_late: false, file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py,.zip' })
+  Object.assign(form, {
+    title: '',
+    description: '',
+    deadline: null,
+    allow_late: false,
+    file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py,.zip'
+  })
   selectedFormats.value = ['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip']
   dialogVisible.value = true
 }
@@ -296,16 +282,8 @@ async function openEdit(row) {
     allow_late: row.allow_late,
     file_rules: row.file_rules || ''
   })
-  // 解析已有的 file_rules 设置到勾选框
-  if (row.file_rules) {
-    selectedFormats.value = row.file_rules.split(',').map(s => s.trim())
-  } else {
-    selectedFormats.value = []
-  }
-  
-  // 加载附件列表
+  selectedFormats.value = row.file_rules ? row.file_rules.split(',').map((s) => s.trim()) : []
   await loadAttachments(row.id)
-  
   dialogVisible.value = true
 }
 
@@ -324,18 +302,18 @@ async function handleAttachmentChange(file) {
     ElMessage.warning('请先保存作业')
     return
   }
-  
+
   uploadingAttachment.value = true
   try {
     const formData = new FormData()
     formData.append('file', file.raw)
-    
+
     const res = await api.post(`/admin/assignments/${editingId.value}/upload-attachment`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
-    
+
     attachmentFiles.value.push(res.data)
     ElMessage.success('附件上传成功')
   } catch (e) {
@@ -349,7 +327,7 @@ async function downloadAttachment(file) {
   try {
     const res = await api.get(`/admin/assignments/${editingId.value}/attachments/${file.id}/download`)
     window.open(res.data.download_url, '_blank')
-  } catch (e) {
+  } catch {
     ElMessage.error('获取下载链接失败')
   }
 }
@@ -361,9 +339,9 @@ async function deleteAttachment(fileId) {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     await api.delete(`/admin/assignments/${editingId.value}/attachments/${fileId}`)
-    attachmentFiles.value = attachmentFiles.value.filter(f => f.id !== fileId)
+    attachmentFiles.value = attachmentFiles.value.filter((file) => file.id !== fileId)
     ElMessage.success('附件删除成功')
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
@@ -435,51 +413,36 @@ async function loadTotalStudents() {
     const res = await api.get('/admin/students')
     totalStudents.value = res.data.length
   } catch {
-    // 静默失败，不影响主要功能
+    // ignore
   }
 }
 
 async function handleDelete() {
   if (!editingId.value) return
-  
+
   try {
-    // 第一次确认
-    await ElMessageBox.confirm(
-      '你确定要删除吗？',
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
+    await ElMessageBox.confirm('你确定要删除吗？', '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
     deleting.value = true
-    
-    // 第一次尝试删除（不带force参数）
     const res = await api.delete(`/admin/assignments/${editingId.value}`)
-    
-    // 检查是否需要再次确认
+
     if (res.data.status === 'confirm_required') {
       deleting.value = false
-      
-      // 第二次确认（提示已有学生提交）
-      await ElMessageBox.confirm(
-        `已有学生上传作业，请问您确认删除吗？`,
-        '删除确认',
-        {
-          confirmButtonText: '确认删除',
-          cancelButtonText: '取消',
-          type: 'warning',
-          distinguishCancelAndClose: true
-        }
-      )
-      
+
+      await ElMessageBox.confirm('已有学生上传作业，请问您确认删除吗？', '删除确认', {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        distinguishCancelAndClose: true
+      })
+
       deleting.value = true
-      
-      // 强制删除
       const forceRes = await api.delete(`/admin/assignments/${editingId.value}?force=true`)
-      
+
       if (forceRes.data.status === 'success') {
         ElMessage.success(forceRes.data.message || '删除成功')
         dialogVisible.value = false
@@ -491,537 +454,67 @@ async function handleDelete() {
       loadAssignments()
     }
   } catch (error) {
-    // 用户取消操作
     if (error === 'cancel' || error === 'close') {
       return
     }
-    // API错误
     ElMessage.error(error.response?.data?.detail || '删除失败')
   } finally {
     deleting.value = false
   }
 }
+
+onMounted(() => {
+  loadAssignments()
+  loadTotalStudents()
+})
 </script>
 
 <style scoped>
-/* 基础样式 */
-.page { 
-  min-height: 100vh; 
-  background: #f5f7fa; 
-}
-
-.app-header {
-  height: auto !important;
-  min-height: 60px;
-  display: flex;
+.id-pill {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 12px 20px;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.header-left {
-  flex-shrink: 0;
-}
-
-.back-btn .back-icon {
-  display: inline;
-}
-
-.back-btn .back-text {
-  display: inline;
-}
-
-.header-center {
-  flex: 1;
-  text-align: center;
-  min-width: 0;
-}
-
-.title { 
-  font-size: 18px; 
-  font-weight: 600; 
-  color: #303133; 
-}
-
-.total-students { 
-  font-size: 14px; 
-  font-weight: 400; 
-  color: #909399; 
-  margin-left: 8px;
-  white-space: nowrap;
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.btn-text {
-  display: inline;
-}
-
-.btn-icon {
-  display: none;
-}
-
-.main-content {
-  padding: 20px;
-  overflow-x: hidden;
-}
-
-/* 表格操作按钮 */
-.action-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-/* 桌面/平板端表格视图 */
-.desktop-view {
-  display: block;
-  overflow-x: auto;
-  width: 100%;
-}
-
-.desktop-view :deep(.el-table) {
-  font-size: 14px;
-  min-width: 100%;
-}
-
-.desktop-view :deep(.el-table th) {
-  padding: 8px 0;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.desktop-view :deep(.el-table td) {
-  padding: 8px 0;
-}
-
-.desktop-view :deep(.el-button--small) {
-  padding: 5px 10px;
-  font-size: 13px;
-}
-
-/* 让文件规则列可以换行 */
-.desktop-view :deep(.el-table__cell) {
-  word-break: break-word;
-}
-
-/* ID和统计列保持简洁 */
-.desktop-view :deep(.el-table__body .cell) {
-  line-height: 1.4;
-}
-
-.mobile-view {
-  display: none;
-}
-
-/* 移动端卡片样式 */
-.assignment-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s;
-}
-
-.assignment-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 12px;
-}
-
-.card-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-  flex: 1;
-  word-break: break-word;
-}
-
-.card-id {
-  font-size: 12px;
-  color: #909399;
-  background: #f4f4f5;
-  padding: 2px 8px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.card-row {
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  gap: 8px;
-}
-
-.card-row .label {
-  color: #606266;
-  font-weight: 500;
-  min-width: 70px;
-  flex-shrink: 0;
-}
-
-.card-row .value {
-  color: #303133;
-  flex: 1;
-  word-break: break-word;
-}
-
-.card-row .stats strong {
-  color: #409eff;
-}
-
-.card-row .file-rules {
-  font-size: 12px;
-  color: #909399;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .card-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.attachment-panel {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+
+.attachment-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.empty-inline {
+  color: var(--text-soft);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.dialog-footer {
   display: flex;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #ebeef5;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 对话框响应式样式 */
-.assignment-dialog :deep(.el-dialog) {
-  margin: 20px auto !important;
-}
-
-.format-checkboxes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.format-checkboxes :deep(.el-checkbox) {
-  margin: 0;
-}
-
-/* 平板/桌面端 (>= 768px) */
-@media (min-width: 768px) {
-  .desktop-view {
-    display: block;
-  }
-  
-  .mobile-view {
-    display: none;
-  }
-  
-  /* 确保表格不超出容器 */
-  .desktop-view :deep(.el-table) {
-    max-width: 100%;
-  }
-  
-  /* 紧凑模式下的样式调整 */
-  .desktop-view :deep(.el-table__cell) {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-}
-
-/* 中等宽度屏幕优化 (768px - 1200px) */
-@media (min-width: 768px) and (max-width: 1200px) {
-  .app-header {
-    padding: 10px 14px;
-  }
-  
-  .main-content {
-    padding: 16px;
-  }
-  
-  .title {
-    font-size: 16px;
-  }
-  
-  .total-students {
-    font-size: 13px;
-  }
-  
-  .desktop-view :deep(.el-table) {
-    font-size: 13px;
-  }
-  
-  .desktop-view :deep(.el-table th),
-  .desktop-view :deep(.el-table td) {
-    padding: 6px 0;
-  }
-  
-  .desktop-view :deep(.el-table__cell) {
-    padding-left: 4px;
-    padding-right: 4px;
-  }
-  
-  .desktop-view :deep(.el-button--small) {
-    padding: 4px 8px;
-    font-size: 12px;
-  }
-  
-  .action-buttons {
-    gap: 4px;
-  }
-  
-  .header-actions :deep(.el-button) {
-    padding: 8px 12px;
-    font-size: 13px;
-  }
-}
-
-/* 较窄屏幕 (768px - 960px) */
-@media (min-width: 768px) and (max-width: 960px) {
-  .header-actions {
-    gap: 6px;
-  }
-  
-  .header-actions :deep(.el-button span) {
-    font-size: 12px;
-  }
-}
-
-/* 移动端 (< 768px) */
-@media (max-width: 768px) {
-  .app-header {
-    padding: 10px 12px;
-    gap: 8px;
-  }
-
-  .header-center {
-    order: -1;
-    flex-basis: 100%;
-    text-align: left;
-    margin-bottom: 8px;
-  }
-
-  .title {
-    font-size: 16px;
-  }
-
-  .total-students {
-    font-size: 12px;
-    margin-left: 4px;
-  }
-
-  .header-left {
-    order: 1;
-  }
-
-  .header-actions {
-    order: 2;
-    gap: 8px;
-  }
-
-  .back-btn {
-    padding: 8px 12px;
-  }
-
-  .export-btn,
-  .create-btn {
-    padding: 8px 12px;
-  }
-
-  .btn-text {
-    display: none;
-  }
-
-  .btn-icon {
-    display: inline;
-    font-size: 18px;
-  }
-
-  .main-content {
-    padding: 12px;
-  }
-
-  /* 切换到卡片视图 */
-  .desktop-view {
-    display: none;
-  }
-
-  .mobile-view {
-    display: block;
-  }
-}
-
-/* 小手机 (< 576px) */
-@media (max-width: 576px) {
-  .app-header {
-    padding: 8px 10px;
-  }
-
-  .header-center {
-    margin-bottom: 6px;
-  }
-
-  .title {
-    font-size: 15px;
-  }
-
-  .total-students {
-    display: block;
-    margin-left: 0;
-    margin-top: 2px;
-  }
-
-  .back-btn {
-    padding: 6px 10px;
-    font-size: 14px;
-  }
-
-  .back-btn .back-text {
-    display: none;
-  }
-
-  .export-btn,
-  .create-btn {
-    padding: 6px 10px;
-    font-size: 14px;
-  }
-
-  .main-content {
-    padding: 10px;
-  }
-
-  .assignment-card {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-
-  .card-title {
-    font-size: 15px;
-  }
-
-  .card-row {
-    font-size: 13px;
-  }
-
-  .card-row .label {
-    min-width: 60px;
-    font-size: 12px;
-  }
-
-  .card-actions :deep(.el-button) {
-    font-size: 13px;
-    padding: 6px 12px;
-  }
-
-  .assignment-dialog :deep(.el-dialog) {
-    margin: 10px !important;
-  }
-
-  .format-checkboxes :deep(.el-checkbox__label) {
-    font-size: 12px;
-  }
-}
-
-/* 横屏手机优化 */
-@media (max-width: 768px) and (orientation: landscape) {
-  .app-header {
-    min-height: 50px;
-  }
-
-  .header-center {
-    flex-basis: auto;
-    order: 0;
-    margin-bottom: 0;
-  }
-
-  .assignment-card {
-    padding: 10px;
-  }
-}
-
-/* 附件列表样式 */
-.attachment-list {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 8px;
-  background-color: #f9fafc;
-}
-
-.attachment-item {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 10px;
-  border-bottom: 1px solid #e4e7ed;
-  transition: background-color 0.2s;
+  justify-content: space-between;
+  gap: 14px;
 }
 
-.attachment-item:last-child {
-  border-bottom: none;
-}
-
-.attachment-item:hover {
-  background-color: #f0f2f5;
-}
-
-.file-name {
-  flex: 1;
-  font-size: 14px;
-  color: #303133;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-right: 10px;
-}
-
-.file-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.no-attachments {
-  color: #909399;
-  font-size: 13px;
-  text-align: center;
-  padding: 20px;
-}
-
-@media (max-width: 576px) {
-  .attachment-item {
+@media (max-width: 640px) {
+  .dialog-footer {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .file-name {
-    margin-right: 0;
-    width: 100%;
-  }
-  
-  .file-actions {
-    width: 100%;
-    justify-content: flex-end;
+    align-items: stretch;
   }
 }
 </style>

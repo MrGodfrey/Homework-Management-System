@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-const backendPort = 18000;
-const frontendPort = 4173;
+const backendPort = Number(process.env.PLAYWRIGHT_BACKEND_PORT || 18000);
+const frontendPort = Number(process.env.PLAYWRIGHT_FRONTEND_PORT || 4173);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -26,7 +26,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "npm run dev -- --host 127.0.0.1 --port 4173 --strictPort",
+      command: `npm run dev -- --host 127.0.0.1 --port ${frontendPort} --strictPort`,
       cwd: "./frontend",
       env: {
         ...process.env,
