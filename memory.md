@@ -209,6 +209,13 @@ Current sample students in repo:
 - `2023113827 / 李四`
 - `2023113828 / 王五`
 
+Credential source conflict noted on 2026-04-18:
+
+- `backend/seed_local_preview.py` defaults to `local_admin / LocalAdmin123!`
+- `scripts/seed_e2e_data.py` seeds `teacher / teacher-pass`
+- current live local DB file `backend/classroom.db` actually contains instructor username `admin`
+- current live local DB also stores student plaintext passwords in `students.plain_password`, so current student test logins should be read from the DB, not inferred from seed docs
+
 ### Local preview limitation
 
 The app still expects Tencent COS for real file upload/download flows. Without valid COS config, login/list/dashboard/student-management preview works, but upload/download endpoints are not guaranteed to work end to end.

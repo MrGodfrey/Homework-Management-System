@@ -38,6 +38,9 @@ html,
 body,
 #app {
   min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -61,11 +64,13 @@ select {
 
 .app-shell {
   min-height: 100vh;
+  max-width: 100%;
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(243, 245, 249, 0.8)),
     var(--bg);
+  overflow-x: hidden;
 }
 
 .shell-sidebar {
@@ -212,6 +217,7 @@ select {
 
 .shell-main {
   min-width: 0;
+  max-width: 100%;
 }
 
 .shell-mobile-head,
@@ -223,6 +229,7 @@ select {
   max-width: 1180px;
   margin: 0 auto;
   padding: 32px 28px 48px;
+  overflow-x: hidden;
 }
 
 .page-stack {
@@ -904,6 +911,16 @@ select {
 }
 
 @media (max-width: 960px) {
+  input,
+  textarea,
+  select,
+  .el-input__inner,
+  .el-textarea__inner,
+  .el-select__selected-item,
+  .el-select__placeholder {
+    font-size: 16px !important;
+  }
+
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
   }

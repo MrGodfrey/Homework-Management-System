@@ -7,13 +7,26 @@
         </div>
       </section>
 
+      <section class="toolbar-panel dashboard-toolbar">
+        <el-input
+          v-model="search"
+          clearable
+          placeholder="搜索姓名或学号后几位"
+          class="search-input"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </section>
+
       <section class="summary-grid dashboard-summary-grid">
         <article class="summary-tile">
           <div class="summary-tile-label">
             <el-icon><User /></el-icon>
             <span>学生总数</span>
           </div>
-          <div class="summary-tile-value">{{ matrix.length }}</div>
+          <div class="summary-tile-value">{{ filteredMatrix.length }}</div>
         </article>
 
         <article class="summary-tile">
@@ -29,7 +42,7 @@
             <el-icon><Memo /></el-icon>
             <span>互动记录</span>
           </div>
-          <div class="summary-tile-value">{{ totalInteractions }}</div>
+          <div class="summary-tile-value">{{ visibleInteractions }}</div>
         </article>
       </section>
 
@@ -42,10 +55,12 @@
 
         <div class="table-shell desktop-view">
           <el-table
-            :data="matrix"
+            :data="filteredMatrix"
             border
+            v-loading="loading"
             style="width: 100%"
             :header-cell-style="{ background: '#f8fafc', color: '#64748b' }"
+            :empty-text="emptyText"
           >
             <el-table-column prop="student_id" label="学号" min-width="120" fixed />
             <el-table-column prop="name" label="姓名" min-width="100" fixed />
@@ -97,8 +112,16 @@
         </div>
 
         <div class="table-shell mobile-view">
-          <div class="card-stack">
-            <article v-for="student in matrix" :key="student.student_id" class="list-card">
+          <div v-if="loading" class="card-stack">
+            <el-skeleton v-for="item in 3" :key="item" animated :rows="4" />
+          </div>
+
+          <div v-else-if="filteredMatrix.length === 0" class="empty-panel">
+            {{ emptyText }}
+          </div>
+
+          <div v-else class="card-stack">
+            <article v-for="student in filteredMatrix" :key="student.student_id" class="list-card">
               <div class="list-card-header">
                 <div>
                   <h3 class="list-card-title">{{ student.name }}</h3>
@@ -182,7 +205,7 @@
 
 <script setup>
 import { computed, ref, onMounted } from 'vue'
-import { Document, Memo, User } from '@element-plus/icons-vue'
+import { Document, Memo, Search, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
@@ -190,6 +213,7 @@ import api from '@/utils/api'
 const matrix = ref([])
 const assignments = ref([])
 const loading = ref(false)
+const search = ref('')
 
 const addDialogVisible = ref(false)
 const manageDialogVisible = ref(false)
@@ -199,8 +223,23 @@ const addLoading = ref(false)
 const manageLoading = ref(false)
 const interactionList = ref([])
 
-const totalInteractions = computed(() =>
-  matrix.value.reduce((sum, item) => sum + (item.interaction_count || 0), 0)
+const filteredMatrix = computed(() => {
+  const keyword = search.value.trim().toLowerCase()
+  if (!keyword) return matrix.value
+
+  return matrix.value.filter((student) => {
+    const name = String(student.name || '').toLowerCase()
+    const studentId = String(student.student_id || '').toLowerCase()
+    return name.includes(keyword) || studentId.includes(keyword)
+  })
+})
+
+const visibleInteractions = computed(() =>
+  filteredMatrix.value.reduce((sum, item) => sum + (item.interaction_count || 0), 0)
+)
+
+const emptyText = computed(() =>
+  search.value.trim() ? '未找到匹配的学生' : '暂无学生数据'
 )
 
 function formatDate(d) {
@@ -289,6 +328,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.toolbar-panel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.search-input {
+  width: min(320px, 100%);
+}
+
 .dashboard-summary-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -363,6 +412,14 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
+  .toolbar-panel {
+    justify-content: stretch;
+  }
+
+  .search-input {
+    width: 100%;
+  }
+
   .dashboard-summary-grid {
     gap: 8px;
   }
