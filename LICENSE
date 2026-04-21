@@ -1,0 +1,35 @@
+Classroom Free Use License 1.0
+
+Copyright (c) 2026 yuwang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, subject to the following conditions:
+
+1. Any redistribution of the Software or substantial portions of it must
+   include this license text and the above copyright notice.
+
+2. If the Software is used, distributed, sublicensed, sold, or otherwise made
+   available for a commercial purpose, the commercial user must provide clear
+   attribution to the original project in a reasonable and visible place such
+   as a product page, about page, documentation, or sales materials. The
+   attribution must include:
+   - Project name: Classroom (Homework-Management-System)
+   - Original source: https://github.com/MrGodfrey/Homework-Management-System
+   - Statement: Based on Classroom by yuwang
+
+3. Any modified version of the Software that is distributed for a commercial
+   purpose must clearly state that it has been modified from the original
+   project.
+
+For purposes of this license, "commercial purpose" means use that is primarily
+intended for commercial advantage or monetary compensation.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
