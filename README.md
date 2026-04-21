@@ -7,7 +7,7 @@
     <img src="https://img.shields.io/badge/Vue_3-3.4-4FC08D?style=flat-square&logo=vuedotjs" alt="Vue 3"/>
     <img src="https://img.shields.io/badge/Element_Plus-2.13-409EFF?style=flat-square&logo=element" alt="Element Plus"/>
     <img src="https://img.shields.io/badge/Tencent_COS-云存储-0052CC?style=flat-square" alt="COS"/>
-    <img src="https://img.shields.io/badge/License-Private-red?style=flat-square" alt="License"/>
+    <img src="https://img.shields.io/badge/License-Custom-blue?style=flat-square" alt="License"/>
   </p>
 </div>
 
@@ -315,4 +315,9 @@ bash switch_env.sh    # 交互式切换 DEV / PROD
 
 ## 📄 License
 
-本项目为私有项目，版权所有。
+本项目采用仓库根目录 [LICENSE](./LICENSE) 中的自定义许可协议：
+
+- 允许学习、研究、修改、分发与商用
+- 商业使用时必须明确注明原项目出处
+- 再分发时需保留许可证文本与版权声明
+- 商业分发的修改版本需说明基于原项目进行了修改
