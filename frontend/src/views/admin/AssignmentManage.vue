@@ -8,6 +8,7 @@
 
         <div class="page-hero-actions">
           <el-button type="success" @click="exportAllGradesCSV">导出成绩</el-button>
+          <el-button type="warning" plain :loading="exportingAllSubmissions" @click="exportAllSubmissionsZip">导出全部作业</el-button>
           <el-button type="primary" @click="openCreate">新建作业</el-button>
         </div>
       </section>
@@ -149,6 +150,14 @@
             </el-checkbox-group>
             <el-input v-model="form.file_rules" placeholder="或手动输入，逗号分隔" style="margin-top: 10px" />
           </el-form-item>
+          <el-alert
+            class="upload-limit-alert"
+            :title="`学生每次提交文件总大小上限：${uploadLimit.label}`"
+            description="压缩包也计入总大小。布置作业时请提醒学生，超过上限需要重新压缩或分拆后再提交。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
           <el-form-item label="作业附件" v-if="editingId">
             <div class="attachment-panel">
               <el-upload
@@ -212,18 +221,28 @@ import { Document, FolderOpened, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
+import {
+  DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
+  formatFileSize,
+  loadSubmissionUploadLimit
+} from '@/utils/uploadLimits'
 
 const assignments = ref([])
 const totalStudents = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
+const exportingAllSubmissions = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
 const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
 const attachmentFiles = ref([])
 const uploadingAttachment = ref(false)
+const uploadLimit = reactive({
+  maxBytes: DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
+  label: formatFileSize(DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES)
+})
 
 const attachmentReadyCount = computed(() => assignments.value.filter((item) => item.id).length)
 
@@ -390,6 +409,26 @@ async function exportAllGradesCSV() {
   }
 }
 
+async function exportAllSubmissionsZip() {
+  exportingAllSubmissions.value = true
+  try {
+    const res = await api.get('/admin/assignments/download-all', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'all_assignments_submissions.zip')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('全部作业导出成功')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '导出失败')
+  } finally {
+    exportingAllSubmissions.value = false
+  }
+}
+
 async function loadAssignments() {
   loading.value = true
   try {
@@ -409,6 +448,12 @@ async function loadTotalStudents() {
   } catch {
     // ignore
   }
+}
+
+async function loadUploadLimit() {
+  const limit = await loadSubmissionUploadLimit(api)
+  uploadLimit.maxBytes = limit.maxBytes
+  uploadLimit.label = limit.label
 }
 
 async function handleDelete() {
@@ -458,6 +503,7 @@ async function handleDelete() {
 }
 
 onMounted(() => {
+  loadUploadLimit()
   loadAssignments()
   loadTotalStudents()
 })
@@ -485,6 +531,10 @@ onMounted(() => {
   width: 100%;
   display: grid;
   gap: 14px;
+}
+
+.upload-limit-alert {
+  margin: 0 0 18px;
 }
 
 .attachment-stack {

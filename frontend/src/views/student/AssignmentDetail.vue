@@ -76,12 +76,15 @@
                 multiple
                 :auto-upload="false"
                 :show-file-list="false"
+                :on-change="handlePendingFilesChange"
                 class="upload-container"
                 data-testid="student-assignment-upload"
               >
                 <el-button type="primary">选择文件</el-button>
                 <template #tip>
-                  <div class="upload-tip">支持多文件同时上传</div>
+                  <div class="upload-tip">
+                    支持多文件同时上传；一次提交总大小不超过 {{ uploadLimit.label }}，压缩包也计入总大小。
+                  </div>
                 </template>
               </el-upload>
             </div>
@@ -92,6 +95,14 @@
                 <el-button size="small" text type="danger" @click="removePendingFile(file.uid)">移除</el-button>
               </li>
             </ul>
+
+            <div
+              v-if="fileList.length > 0"
+              class="selected-size-note"
+              :class="{ 'is-over-limit': isOverUploadLimit }"
+            >
+              已选择 {{ selectedFilesSizeLabel }} / 上限 {{ uploadLimit.label }}
+            </div>
 
             <el-progress v-if="uploading" :percentage="progress" class="upload-progress" />
 
@@ -112,12 +123,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Upload } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
+import {
+  DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
+  formatFileSize,
+  loadSubmissionUploadLimit,
+  totalRawFileSize
+} from '@/utils/uploadLimits'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,6 +144,14 @@ const loading = ref(false)
 const uploading = ref(false)
 const progress = ref(0)
 const fileList = ref([])
+const uploadLimit = reactive({
+  maxBytes: DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
+  label: formatFileSize(DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES)
+})
+
+const selectedFilesSize = computed(() => totalRawFileSize(fileList.value))
+const selectedFilesSizeLabel = computed(() => formatFileSize(selectedFilesSize.value))
+const isOverUploadLimit = computed(() => selectedFilesSize.value > uploadLimit.maxBytes)
 
 onMounted(() => {
   loadAssignment()
@@ -152,9 +177,20 @@ function removePendingFile(uid) {
   fileList.value = fileList.value.filter((file) => file.uid !== uid)
 }
 
+function handlePendingFilesChange(_file, uploadFiles = fileList.value) {
+  const nextSize = totalRawFileSize(uploadFiles)
+  if (nextSize > uploadLimit.maxBytes) {
+    ElMessage.warning(`当前选择文件合计 ${formatFileSize(nextSize)}，超过 ${uploadLimit.label} 上限。请压缩或分拆后再提交。`)
+  }
+}
+
 async function submitFiles() {
   if (fileList.value.length === 0) {
     ElMessage.warning('请先选择文件')
+    return
+  }
+  if (isOverUploadLimit.value) {
+    ElMessage.warning(`当前选择文件合计 ${selectedFilesSizeLabel.value}，超过 ${uploadLimit.label} 上限。请压缩或分拆后再提交。`)
     return
   }
   const formData = new FormData()
@@ -173,7 +209,11 @@ async function submitFiles() {
     fileList.value = []
     router.push(`/assignments/${route.params.id}/submissions`)
   } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '提交失败')
+    if (e.response?.status === 413) {
+      ElMessage.error(`文件超过 ${uploadLimit.label} 上限，请压缩或分拆后重新提交。`)
+    } else {
+      ElMessage.error(e.response?.data?.detail || '提交失败')
+    }
   } finally {
     uploading.value = false
   }
@@ -184,6 +224,10 @@ async function loadAssignment() {
   try {
     const res = await api.get(`/assignments/${route.params.id}`)
     assignment.value = res.data
+
+    const limit = await loadSubmissionUploadLimit(api)
+    uploadLimit.maxBytes = limit.maxBytes
+    uploadLimit.label = limit.label
 
     const attachmentsRes = await api.get(`/assignments/${route.params.id}/attachments`)
     attachments.value = attachmentsRes.data
@@ -236,6 +280,17 @@ async function downloadAttachment(fileId) {
   color: var(--text-muted);
   font-size: 0.84rem;
   line-height: 1.5;
+}
+
+.selected-size-note {
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.selected-size-note.is-over-limit {
+  color: var(--rose);
 }
 
 .pending-files {

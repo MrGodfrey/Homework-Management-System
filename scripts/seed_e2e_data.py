@@ -104,6 +104,31 @@ def main() -> None:
         )
         db.add_all([seeded_file, interaction, audit_log])
         db.commit()
+
+        bob_submission = Submission(
+            assignment_id=essay_assignment.id,
+            student_id=bob.id,
+            version_no=1,
+            submitted_at=now - timedelta(hours=10),
+            is_graded=False,
+        )
+        db.add(bob_submission)
+        db.commit()
+        db.refresh(bob_submission)
+
+        bob_submission_key = (
+            f"{env_prefix}/submissions/{essay_assignment.id}/{bob.student_id}/"
+            "seeded_v1_bob-notes.md"
+        )
+        upload_file_to_cos(b"# Bob notes\n\nSeeded submission for export coverage.\n", bob_submission_key)
+        db.add(
+            SubmissionFile(
+                submission_id=bob_submission.id,
+                filename="bob-notes.md",
+                cos_key=bob_submission_key,
+            )
+        )
+        db.commit()
     finally:
         db.close()
 

@@ -279,12 +279,13 @@ async function downloadSingle(row) {
   downloadingSingle.value = row.id
   try {
     const res = await api.get(`/admin/assignments/${route.params.id}/submissions/${row.student_id}/download`, {
+      params: { version: row.version },
       responseType: 'blob'
     })
     const url = URL.createObjectURL(res.data)
     const link = document.createElement('a')
     link.href = url
-    link.download = `HW${route.params.id}_${row.student_id}_${row.student_name}.zip`
+    link.download = `HW${route.params.id}_${row.student_id}_${row.student_name}_v${row.version}.zip`
     link.click()
     URL.revokeObjectURL(url)
     ElMessage.success('下载成功')

@@ -8,6 +8,12 @@ npm run test:web
 
 以后只要改动了网页相关代码，默认都跑这条命令。它是当前仓库的回归门禁。
 
+后端接口和打包目录结构另有一组轻量测试：
+
+```bash
+PYTHONPATH=backend python -m pytest backend/tests.py
+```
+
 ## 一次性准备
 
 先保证下面三件事已经完成：
@@ -49,6 +55,7 @@ backend/.venv/bin/pip install -r backend/requirements.txt
 - 学生查看作业列表
 - 学生查看互动记录
 - 学生查看作业详情
+- 学生看到单次提交总大小上限提示
 - 学生下载作业附件
 - 学生非法文件类型提交被拒绝
 - 学生合法多文件提交
@@ -66,6 +73,7 @@ backend/.venv/bin/pip install -r backend/requirements.txt
 - 教师下载密码 CSV
 - 教师删除学生
 - 教师新建作业
+- 教师布置作业时看到学生提交大小上限提示
 - 教师编辑作业
 - 教师上传作业附件
 - 教师下载作业附件
@@ -73,11 +81,12 @@ backend/.venv/bin/pip install -r backend/requirements.txt
 - 教师删除已有提交的作业
 - 教师查看提交详情
 - 教师下载单个学生提交 ZIP
-- 教师下载最新版 ZIP
-- 教师下载全部版本 ZIP
+- 教师下载最新版 ZIP，且包含本次作业所有已提交学生的最新版文件
+- 教师下载全部版本 ZIP，且包含本次作业所有已提交学生的所有版本文件
 - 教师评分
 - 教师导出单作业 CSV
 - 教师导出全量成绩 CSV
+- 教师导出全部作业 ZIP，目录为作业 / 学生 / 版本 / 文件
 - 学生刷新后看到最新分数
 - 学生退出登录
 - 教师退出登录

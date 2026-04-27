@@ -98,6 +98,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     await essayRow.getByRole("button", { name: "提交" }).click();
     await expect(studentPage).toHaveURL(/\/assignments\/1$/);
     await expect(studentPage.getByText("essay-guide.txt")).toBeVisible();
+    await expect(studentPage.getByText(/一次提交总大小不超过 50MB/)).toBeVisible();
 
     const attachmentApi = studentPage.waitForResponse((response) =>
       response.url().includes("/api/assignments/1/attachments/1/download")
@@ -221,6 +222,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
 
     await adminPage.getByRole("button", { name: /新建作业/ }).click();
     const createDialog = adminPage.getByRole("dialog", { name: "新建作业" });
+    await expect(createDialog.getByText(/学生每次提交文件总大小上限：50MB/)).toBeVisible();
     await createDialog.getByPlaceholder("请输入作业名称").fill(sandboxTitle);
     await createDialog.getByPlaceholder("可选").fill("Created by the regression suite.");
     const deadlineInput = createDialog.getByPlaceholder("选择截止日期时间");
@@ -316,6 +318,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     const latestZipEntries = await readDownloadZipEntries(latestZip);
     expect(latestZipEntries).toContain("20230001_Alice/essay-v2.md");
     expect(latestZipEntries).toContain("20230001_Alice/appendix.pdf");
+    expect(latestZipEntries).toContain("20230002_Bob/bob-notes.md");
 
     const allZipPromise = adminPage.waitForEvent("download");
     await adminPage.getByRole("button", { name: /全部版本/ }).click();
@@ -324,6 +327,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     expect(allZipEntries).toContain("20230001_Alice/v1/essay-v1.pdf");
     expect(allZipEntries).toContain("20230001_Alice/v2/essay-v2.md");
     expect(allZipEntries).toContain("20230001_Alice/v2/appendix.pdf");
+    expect(allZipEntries).toContain("20230002_Bob/v1/bob-notes.md");
 
     await adminPage.goto("/admin/assignments");
     const allGradesPromise = adminPage.waitForEvent("download");
@@ -332,6 +336,17 @@ test("website regression covers the full classroom workflow", async ({ browser }
     const allGradesText = await readDownloadText(allGradesDownload);
     expect(allGradesText).toContain("学号,姓名,互动次数,Essay Draft,Past Due Quiz");
     expect(allGradesText).toContain("20230001,Alice,1,92");
+
+    const allAssignmentsPromise = adminPage.waitForEvent("download");
+    await adminPage.getByRole("button", { name: /导出全部作业/ }).click();
+    const allAssignmentsZip = await allAssignmentsPromise;
+    const allAssignmentsEntries = await readDownloadZipEntries(allAssignmentsZip);
+    expect(allAssignmentsEntries).toContain("HW1_Essay Draft/20230001_Alice/v1/essay-v1.pdf");
+    expect(allAssignmentsEntries).toContain("HW1_Essay Draft/20230001_Alice/v2/essay-v2.md");
+    expect(allAssignmentsEntries).toContain("HW1_Essay Draft/20230002_Bob/v1/bob-notes.md");
+    expect(allAssignmentsEntries).toContain("HW2_Past Due Quiz/");
+    expect(allAssignmentsEntries).toContain("HW2_Past Due Quiz/20230001_Alice/");
+    expect(allAssignmentsEntries).toContain("HW2_Past Due Quiz/20230002_Bob/");
   });
 
   await test.step("Student sees the graded score and both roles can log out cleanly", async () => {

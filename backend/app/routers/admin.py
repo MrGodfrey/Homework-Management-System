@@ -1,5 +1,8 @@
 import csv
 import io
+import os
+import re
+import tempfile
 import zipfile
 import secrets
 import string
@@ -8,7 +11,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -23,7 +26,6 @@ from app.cos_utils import (
     read_file_from_storage,
     upload_file_to_cos,
 )
-from app.config import settings
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -37,6 +39,63 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(get_current_instructor)]
 )
+
+
+def _safe_zip_segment(value: object, fallback: str) -> str:
+    text = str(value or "").strip().replace("/", "_").replace("\\", "_")
+    text = re.sub(r'[<>:"|?*\x00-\x1f]', "_", text)
+    text = re.sub(r"\s+", " ", text).strip(". ")
+    return text or fallback
+
+
+def _student_folder(student: Student) -> str:
+    student_no = _safe_zip_segment(student.student_id, f"student_{student.id}")
+    student_name = _safe_zip_segment(student.name, "unknown")
+    return f"{student_no}_{student_name}"
+
+
+def _assignment_folder(assignment: Assignment) -> str:
+    title = _safe_zip_segment(assignment.title, "assignment")
+    return f"HW{assignment.id}_{title}"
+
+
+def _dedupe_arcname(arcname: str, used_arcnames: set[str]) -> str:
+    if arcname not in used_arcnames:
+        used_arcnames.add(arcname)
+        return arcname
+
+    if "/" in arcname:
+        folder, filename = arcname.rsplit("/", 1)
+        prefix = f"{folder}/"
+    else:
+        filename = arcname
+        prefix = ""
+
+    stem, ext = os.path.splitext(filename)
+    counter = 2
+    while True:
+        candidate = f"{prefix}{stem}_{counter}{ext}"
+        if candidate not in used_arcnames:
+            used_arcnames.add(candidate)
+            return candidate
+        counter += 1
+
+
+def _write_submission_files(
+    zf: zipfile.ZipFile,
+    submission: Submission,
+    base_folder: str,
+    used_arcnames: set[str],
+) -> None:
+    for file in submission.files:
+        try:
+            file_bytes = read_file_from_storage(file.cos_key)
+            filename = _safe_zip_segment(file.filename, f"file_{file.id}")
+            raw_arcname = f"{base_folder}/{filename}" if base_folder else filename
+            arcname = _dedupe_arcname(raw_arcname, used_arcnames)
+            zf.writestr(arcname, file_bytes)
+        except Exception as e:
+            print(f"Failed to download {file.cos_key} from storage: {e}")
 
 @router.get("/students", response_model=List[StudentOut])
 def get_students(db: Session = Depends(get_db)):
@@ -562,12 +621,14 @@ def get_submissions(assignment_id: int, db: Session = Depends(get_db)):
     return res
 
 @router.get("/assignments/{assignment_id}/submissions/{student_no}/download")
-def download_single_student_submission(assignment_id: int, student_no: str, db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
+def download_single_student_submission(
+    assignment_id: int,
+    student_no: str,
+    version: Optional[int] = None,
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
+):
     """GET /assignments/{id}/submissions/{student_no}/download - 下载单个学生的作业"""
-    import tempfile
-    import os
-    from fastapi.responses import FileResponse
-    
     assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -577,44 +638,91 @@ def download_single_student_submission(assignment_id: int, student_no: str, db: 
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # 找该学生的最新提交
-    latest_sub = db.query(Submission).filter(
+    query = db.query(Submission).filter(
         Submission.assignment_id == assignment_id,
         Submission.student_id == student.id
-    ).order_by(Submission.version_no.desc()).first()
+    )
+    if version is not None:
+        query = query.filter(Submission.version_no == version)
     
-    if not latest_sub or not latest_sub.files:
+    target_sub = query.order_by(Submission.version_no.desc()).first()
+    
+    if not target_sub or not target_sub.files:
         raise HTTPException(status_code=404, detail="No submission found for this student")
     
     # 创建 ZIP 文件
     temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    used_arcnames: set[str] = set()
     with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for file in latest_sub.files:
-            try:
-                file_bytes = read_file_from_storage(file.cos_key)
-                zf.writestr(file.filename, file_bytes)
-            except Exception as e:
-                print(f"Failed to download {file.cos_key} from COS: {e}")
+        _write_submission_files(zf, target_sub, "", used_arcnames)
     
     temp_zip.close()
-    zip_filename = f"HW{assignment_id}_{student_no}_{student.name}.zip"
+    version_suffix = f"_v{target_sub.version_no}" if version is not None else ""
+    zip_filename = f"HW{assignment_id}_{student_no}_{student.name}{version_suffix}.zip"
     
     if background_tasks:
         background_tasks.add_task(os.remove, temp_zip.name)
     
     return FileResponse(temp_zip.name, media_type="application/zip", filename=zip_filename)
 
+@router.get("/assignments/download-all")
+def download_all_assignments_submissions(db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
+    """导出全部作业文件：作业 / 学生 / 版本 / 文件。"""
+    assignments = db.query(Assignment).order_by(Assignment.id).all()
+    if not assignments:
+        raise HTTPException(status_code=404, detail="No assignments found to download")
+
+    students = db.query(Student).order_by(Student.student_id).all()
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    used_arcnames: set[str] = set()
+    with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for assignment in assignments:
+            assignment_folder = _assignment_folder(assignment)
+            zf.writestr(_dedupe_arcname(f"{assignment_folder}/", used_arcnames), "")
+
+            subs = (
+                db.query(Submission)
+                .filter(Submission.assignment_id == assignment.id)
+                .join(Student)
+                .order_by(Student.student_id, Submission.version_no)
+                .all()
+            )
+            subs_by_student: dict[int, list[Submission]] = {}
+            for sub in subs:
+                subs_by_student.setdefault(sub.student_id, []).append(sub)
+
+            for student in students:
+                student_folder = f"{assignment_folder}/{_student_folder(student)}"
+                zf.writestr(_dedupe_arcname(f"{student_folder}/", used_arcnames), "")
+                for sub in subs_by_student.get(student.id, []):
+                    version_folder = f"v{sub.version_no}"
+                    base_folder = f"{student_folder}/{version_folder}"
+                    zf.writestr(_dedupe_arcname(f"{base_folder}/", used_arcnames), "")
+                    _write_submission_files(zf, sub, base_folder, used_arcnames)
+
+    temp_zip.close()
+    
+    if background_tasks:
+        background_tasks.add_task(os.remove, temp_zip.name)
+        
+    return FileResponse(temp_zip.name, media_type="application/zip", filename="all_assignments_submissions.zip")
+
 @router.get("/assignments/{assignment_id}/download")
 def download_submissions(assignment_id: int, mode: str = "latest", db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
-    import tempfile
-    import os
-    from fastapi.responses import FileResponse
-    
+    if mode not in {"latest", "all"}:
+        raise HTTPException(status_code=400, detail="mode must be latest or all")
+
     assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
         
-    subs = db.query(Submission).filter(Submission.assignment_id == assignment_id).all()
+    subs = (
+        db.query(Submission)
+        .filter(Submission.assignment_id == assignment_id)
+        .join(Student)
+        .order_by(Student.student_id, Submission.version_no)
+        .all()
+    )
     if not subs:
         raise HTTPException(status_code=404, detail="No submissions found to download")
         
@@ -624,28 +732,19 @@ def download_submissions(assignment_id: int, mode: str = "latest", db: Session =
         for sub in subs:
             if sub.student_id not in student_subs or sub.version_no > student_subs[sub.student_id].version_no:
                 student_subs[sub.student_id] = sub
-        subs_to_download = list(student_subs.values())
+        subs_to_download = sorted(student_subs.values(), key=lambda sub: sub.student.student_id)
         zip_filename = f"HW{assignment_id}_latest_only.zip"
     else:
         subs_to_download = subs
         zip_filename = f"HW{assignment_id}_all_versions.zip"
         
     temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    used_arcnames: set[str] = set()
     with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
         for sub in subs_to_download:
-            for file in sub.files:
-                try:
-                    file_bytes = read_file_from_storage(file.cos_key)
-                    
-                    student_prefix = f"{sub.student.student_id}_{sub.student.name}"
-                    if mode == "all":
-                        arcname = f"{student_prefix}/v{sub.version_no}/{file.filename}"
-                    else:
-                        arcname = f"{student_prefix}/{file.filename}"
-                    
-                    zf.writestr(arcname, file_bytes)
-                except Exception as e:
-                    print(f"Failed to download {file.cos_key} from COS: {e}")
+            student_prefix = _student_folder(sub.student)
+            base_folder = f"{student_prefix}/v{sub.version_no}" if mode == "all" else student_prefix
+            _write_submission_files(zf, sub, base_folder, used_arcnames)
                     
     temp_zip.close()
     

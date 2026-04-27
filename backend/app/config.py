@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000")
 
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./classroom.db")
+    MAX_SUBMISSION_UPLOAD_BYTES: int = int(os.getenv("MAX_SUBMISSION_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 
     class Config:
         env_file = ".env"

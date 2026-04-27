@@ -12,6 +12,7 @@ from app.dependencies import get_current_student
 from app.schemas import AssignmentBase, StudentMeOut, InteractionOut
 from app.cos_utils import upload_file_to_cos, generate_presigned_url
 from app.config import settings
+from app.upload_limits import format_file_size
 
 router = APIRouter(
     prefix="/api/assignments",
@@ -180,16 +181,22 @@ async def submit_assignment(
     
     new_version_no = latest_sub.version_no + 1 if latest_sub else 1
     
-    # Calculate total file size (max 50 MB)
+    # Calculate total file size.
     total_size = 0
     file_bytes_list = []
-    MAX_SIZE = 50 * 1024 * 1024
+    max_size = settings.MAX_SUBMISSION_UPLOAD_BYTES
     
     for f in files:
         file_bytes = await f.read()
         total_size += len(file_bytes)
-        if total_size > MAX_SIZE:
-            raise HTTPException(status_code=400, detail="Total file size exceeds 50MB limit.")
+        if total_size > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"本次提交文件总大小为 {format_file_size(total_size)}，"
+                    f"超过 {format_file_size(max_size)} 上限。请压缩或分拆后重新上传。"
+                ),
+            )
         file_bytes_list.append((f, file_bytes))
 
     # Create DB Submission
