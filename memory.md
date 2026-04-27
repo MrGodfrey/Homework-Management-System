@@ -1,6 +1,6 @@
 # Classroom Working Memory
 
-Last updated: 2026-04-18
+Last updated: 2026-04-27
 
 ## 1. Repo Snapshot
 
@@ -67,6 +67,10 @@ Some older docs still reference:
 - frontend served directly from `/home/ubuntu/app/frontend/dist`
 
 Those look historical. Current root scripts (`sync_to_server.sh`, `deploy.sh`) point to `/home/ubuntu/classroom` and `classroom-backend`. Treat those as the current source of truth unless the user says production was changed.
+
+### Production config drift noted on 2026-04-27
+
+Docs say Nginx should set `client_max_body_size 50M`, matching the app's default submission limit. Actual production `/etc/nginx/sites-available/classroom` was missing that directive, so multi-file uploads over Nginx's default 1MB failed with HTTP 413 before reaching FastAPI. The live config was backed up to `/etc/nginx/sites-available/classroom.backup_20260427_211105`, updated with `client_max_body_size 50M;`, validated with `nginx -t`, and reloaded. `deploy.sh` now includes a 2MB upload-size smoke probe to catch this drift.
 
 ## 4. Deployment Paths In Repo
 

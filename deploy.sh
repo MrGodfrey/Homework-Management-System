@@ -190,6 +190,9 @@ smoke_test_remote() {
   local admin_login_code
   local api_probe_code
   local api_probe_body
+  local upload_probe_code
+  local upload_probe_body
+  local upload_probe_payload
 
   backend_root_code="$(curl -sS -o /tmp/classroom_backend_root.out -w '%{http_code}' http://127.0.0.1:8000/)"
   if [[ "$backend_root_code" != "200" ]]; then
@@ -227,7 +230,25 @@ smoke_test_remote() {
   fi
 
   rm -f "$api_probe_body"
-  echo "冒烟测试通过：后端 200，前端 200，登录探测 401"
+
+  upload_probe_payload="$(mktemp)"
+  upload_probe_body="$(mktemp)"
+  dd if=/dev/zero of="$upload_probe_payload" bs=1M count=2 status=none
+  upload_probe_code="$(curl -sS -o "$upload_probe_body" -w '%{http_code}' \
+    http://127.0.0.1/api/assignments/1/submit \
+    -X POST \
+    --data-binary @"$upload_probe_payload" || true)"
+  rm -f "$upload_probe_payload"
+
+  if [[ "$upload_probe_code" == "413" ]]; then
+    echo "错误：上传探测被 Nginx 拒绝，HTTP 413。请确认站点配置包含 client_max_body_size 50M。"
+    cat "$upload_probe_body" || true
+    rm -f "$upload_probe_body"
+    exit 1
+  fi
+
+  rm -f "$upload_probe_body"
+  echo "冒烟测试通过：后端 200，前端 200，登录探测 401，2MB 上传探测未被 413 拒绝"
 }
 
 remote_phase_main() {
