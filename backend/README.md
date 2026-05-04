@@ -22,13 +22,13 @@ ENV=DEV
 DATABASE_URL=sqlite:///./classroom.db
 
 # COS 对象存储配置
-COS_SECRET_ID=your_secret_id
-COS_SECRET_KEY=your_secret_key
+COS_SECRET_ID=<set-in-local-env>
+COS_SECRET_KEY=<set-in-local-env>
 COS_REGION=ap-guangzhou
-COS_BUCKET=your_bucket_name
+COS_BUCKET=<set-in-local-env>
 
 # JWT 配置
-SECRET_KEY=supersecretkey
+SECRET_KEY=<set-in-local-env>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```

@@ -48,25 +48,25 @@ Most concrete production facts come from `sync_to_server.sh`, `deploy.sh`, `使�
 
 ### Canonical current deployment facts
 
-- Host alias: `tencent-prod`
-- Public IP: `162.14.78.163`
+- Host alias: `<ssh-host-alias>`
+- Public IP: `<server-ip-or-domain>`
 - Server type: Tencent Cloud CVM
 - Expected OS: Ubuntu
-- Project directory: `/home/ubuntu/classroom`
-- Backend service name: `classroom-backend`
+- Project directory: `<project-dir>`
+- Backend service name: `<backend-service-name>`
 - Backend bind target behind reverse proxy: FastAPI/Uvicorn on `127.0.0.1:8000`
-- Frontend static files deployed to: `/var/www/classroom`
+- Frontend static files deployed to: `<frontend-publish-dir>`
 - Web server: Nginx
 
 ### Important legacy/alternate paths found in docs
 
 Some older docs still reference:
 
-- `/home/ubuntu/app`
+- `<project-dir>`
 - systemd service name `app`
-- frontend served directly from `/home/ubuntu/app/frontend/dist`
+- frontend served directly from `<project-dir>/frontend/dist`
 
-Those look historical. Current root scripts (`sync_to_server.sh`, `deploy.sh`) point to `/home/ubuntu/classroom` and `classroom-backend`. Treat those as the current source of truth unless the user says production was changed.
+Those look historical. Current root scripts (`sync_to_server.sh`, `deploy.sh`) point to `<project-dir>` and `<backend-service-name>`. Treat those as the current source of truth unless the user says production was changed.
 
 ### Production config drift noted on 2026-04-27
 
@@ -77,13 +77,13 @@ Docs say Nginx should set `client_max_body_size 50M`, matching the app's default
 ### Preferred scripted path
 
 1. Full deploy from local machine: `./deploy.sh`
-   - runs a remote preflight on `tencent-prod`
+   - runs a remote preflight on `<ssh-host-alias>`
    - confirms remote `ENV=PROD` and the effective `DATABASE_URL`
-   - backs up `/home/ubuntu/classroom/backend/classroom.db`
+   - backs up `<project-dir>/backend/classroom.db`
    - verifies the backup file exists
-   - rsyncs repo contents to `tencent-prod:/home/ubuntu/classroom/`
-   - runs remote backend install + Alembic upgrade + `sudo systemctl restart classroom-backend`
-   - runs remote frontend build and publishes to `/var/www/classroom`
+   - rsyncs repo contents to `<ssh-host-alias>:<project-dir>/`
+   - runs remote backend install + Alembic upgrade + `sudo systemctl restart <backend-service-name>`
+   - runs remote frontend build and publishes to `<frontend-publish-dir>`
    - runs remote smoke checks against backend root, frontend root, admin login page, and invalid-login probe
 2. Sync only: `./sync_to_server.sh`
    - thin wrapper around `./deploy.sh --sync-only`
@@ -128,20 +128,20 @@ For full deploy rollback, `使用说明.md` also documents:
 Use this order unless a future verified process replaces it:
 
 1. SSH to server
-2. `cd /home/ubuntu/classroom/backend`
+2. `cd <project-dir>/backend`
 3. `python backup_database.py` or manual `cp classroom.db classroom.db.backup_<timestamp>`
 4. Verify backup file exists
 5. Sync/pull code
 6. Install backend deps
 7. Review Alembic history/current
 8. Run migration
-9. Restart `classroom-backend`
-10. Rebuild frontend and publish to `/var/www/classroom`
+9. Restart `<backend-service-name>`
+10. Rebuild frontend and publish to `<frontend-publish-dir>`
 11. Smoke test login/API/basic pages
 
 ### Fast rollback checklist
 
-1. Stop backend: `sudo systemctl stop classroom-backend`
+1. Stop backend: `sudo systemctl stop <backend-service-name>`
 2. Restore DB from the last verified backup
 3. Restore `.env` if config changed
 4. Reset code to last known good revision
@@ -200,7 +200,7 @@ Tracked helper added for this workflow:
 Default local credentials it creates:
 
 - admin username: `local_admin`
-- admin password: `LocalAdmin123!`
+- admin password: `<local-preview-admin-password>`
 
 Default students come from `student.csv` and use:
 
@@ -214,7 +214,7 @@ Current sample students in repo:
 
 Credential source conflict noted on 2026-04-18:
 
-- `backend/seed_local_preview.py` defaults to `local_admin / LocalAdmin123!`
+- `backend/seed_local_preview.py` defaults to `local_admin / <local-preview-admin-password>`
 - `scripts/seed_e2e_data.py` seeds `teacher / teacher-pass`
 - current live local DB file `backend/classroom.db` actually contains instructor username `admin`
 - current live local DB also stores student plaintext passwords in `students.plain_password`, so current student test logins should be read from the DB, not inferred from seed docs

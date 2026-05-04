@@ -7,7 +7,7 @@
 你需要准备：
 
 1. 一台腾讯云 CVM 实例（Linux）。
-2. 已知服务器公网 IP，例如 `162.14.78.163`。
+2. 已知服务器公网 IP，例如 `<server-ip-or-domain>`。
 3. 已知登录用户名：
 	 - Ubuntu 常见是 `ubuntu`
 4. 本机已安装 OpenSSH（macOS 默认有）。
@@ -67,7 +67,7 @@ chmod 600 ~/.ssh/authorized_keys
 编辑本机 `~/.ssh/config`：
 
 ```ssh-config
-Host tencent-prod
+Host <ssh-host-alias>
 	HostName 43.xx.xx.xx
 	User ubuntu
 	Port 22
@@ -94,7 +94,7 @@ chmod 600 ~/.ssh/tencent.pem
 先在终端验证：
 
 ```bash
-ssh tencent-prod
+ssh <ssh-host-alias>
 ```
 
 如果出现需要输入密码的情况，就可能是上面的权限没有给对，需要重新设置权限才行。
@@ -108,7 +108,7 @@ ssh tencent-prod
 先在 `~/.ssh/config` 增强该 Host：
 
 ```ssh-config
-Host tencent-prod
+Host <ssh-host-alias>
 	HostName 43.xx.xx.xx
 	User ubuntu
 	Port 22
@@ -131,9 +131,9 @@ ssh-add --apple-use-keychain ~/.ssh/tencent
 1. 安装扩展：`Remote - SSH`（发布者 Microsoft）。
 2. 打开命令面板：`Cmd + Shift + P`。
 3. 选择 `Remote-SSH: Connect to Host...`。
-4. 选择 `tencent-prod`。
+4. 选择 `<ssh-host-alias>`。
 5. 首次连接会让你确认指纹，输入 `yes`。
-6. 连接成功后，VS Code 左下角会显示 `SSH: tencent-prod`。
+6. 连接成功后，VS Code 左下角会显示 `SSH: <ssh-host-alias>`。
 
 首次连接会在远端安装 VS Code Server，等安装完成即可。
 
@@ -154,18 +154,18 @@ ssh-add --apple-use-keychain ~/.ssh/tencent
 
 具体操作如下：
 
-1. 在 VS Code 执行 `Remote-SSH: Connect to Host...`，连接 `tencent-prod`。
+1. 在 VS Code 执行 `Remote-SSH: Connect to Host...`，连接 `<ssh-host-alias>`。
 2. 连接成功后，执行 `File: Open Folder...`（或菜单 `File -> Open Folder...`）。
-3. 选择服务器上的项目目录，例如 `/home/ubuntu/app`。
-4. 确认左下角显示 `SSH: tencent-prod`，并且资源管理器里能看到远端文件。
+3. 选择服务器上的项目目录，例如 `<project-dir>`。
+4. 确认左下角显示 `SSH: <ssh-host-alias>`，并且资源管理器里能看到远端文件。
 5. 执行 `File: Save Workspace As...`。
-6. 保存到本机一个固定位置（建议）：`~/Documents/vscode-workspaces/tencent-prod-app.code-workspace`。
+6. 保存到本机一个固定位置（建议）：`~/Documents/vscode-workspaces/<ssh-host-alias>-app.code-workspace`。
 7. 关闭当前窗口，测试打开刚保存的 `.code-workspace` 文件。
 8. 如果配置无误，VS Code 会自动触发 Remote-SSH 并回到同一个远端目录。
 
 建议补充：
 
-1. 一个服务器目录对应一个 `.code-workspace` 文件，命名清晰一些（如 `tencent-prod-api.code-workspace`）。
+1. 一个服务器目录对应一个 `.code-workspace` 文件，命名清晰一些（如 `<ssh-host-alias>-api.code-workspace`）。
 2. 可以把这个工作区文件固定到 Finder 侧边栏或 Dock，后续基本就是双击即连。
 3. 如果公司网络变化频繁，优先配好 ssh-agent 和 keychain，避免重连时反复输口令。
 
@@ -175,7 +175,7 @@ ssh-add --apple-use-keychain ~/.ssh/tencent
 {
 	"folders": [
 		{
-			"uri": "vscode-remote://ssh-remote+tencent-prod/home/ubuntu/app"
+			"uri": "vscode-remote://ssh-remote+<ssh-host-alias><project-dir>"
 		}
 	],
 	"settings": {
@@ -186,7 +186,7 @@ ssh-add --apple-use-keychain ~/.ssh/tencent
 
 说明：
 
-1. `ssh-remote+tencent-prod` 里的 `tencent-prod` 必须和 `~/.ssh/config` 的 `Host` 别名一致。
+1. `ssh-remote+<ssh-host-alias>` 里的 `<ssh-host-alias>` 必须和 `~/.ssh/config` 的 `Host` 别名一致。
 2. `uri` 后半段是服务器上的绝对路径。
 3. 这个文件保存在本地，不在服务器上。
 
@@ -195,7 +195,7 @@ ssh-add --apple-use-keychain ~/.ssh/tencent
 在 `~/.zshrc` 增加：
 
 ```bash
-alias tx='ssh tencent-prod'
+alias tx='ssh <ssh-host-alias>'
 ```
 
 执行 `source ~/.zshrc` 后，命令行输入 `tx` 即可登录。
@@ -215,7 +215,7 @@ alias tx='ssh tencent-prod'
 可用详细日志定位：
 
 ```bash
-ssh -vvv tencent-prod
+ssh -vvv <ssh-host-alias>
 ```
 
 ### 2) 超时 `Connection timed out`
@@ -256,7 +256,7 @@ sudo systemctl restart ssh
 ## 10. 最小可用模板（可直接替换）
 
 ```ssh-config
-Host tencent-prod
+Host <ssh-host-alias>
 	HostName <你的公网IP>
 	User <你的用户名>
 	Port 22
@@ -268,8 +268,8 @@ Host tencent-prod
 
 完成后，你的日常连接路径就是：
 
-1. 终端：`ssh tencent-prod`
-2. VS Code：`Remote-SSH: Connect to Host... -> tencent-prod`
+1. 终端：`ssh <ssh-host-alias>`
+2. VS Code：`Remote-SSH: Connect to Host... -> <ssh-host-alias>`
 
 这套配置完成后，基本就是“打开 VS Code -> 选择主机 -> 自动登录”。
 

@@ -470,7 +470,7 @@ JWT（JSON Web Token）
 部署架构：
 
 ```
-腾讯云 CVM（162.14.78.163）
+腾讯云 CVM（<server-ip-or-domain>）
 ├── Nginx（反向代理 + HTTPS + 静态文件）
 │   ├── / → Vue 前端静态文件
 │   └── /api/ → FastAPI 后端（uvicorn，端口 8000）
@@ -706,7 +706,7 @@ frontend/src/
 
 ## 阶段 6：部署
 
-### 步骤 6.1 服务器环境准备（腾讯云 CVM 162.14.78.163）
+### 步骤 6.1 服务器环境准备（腾讯云 CVM <server-ip-or-domain>）
 
 ```bash
 # SSH 登录服务器
@@ -761,6 +761,6 @@ source venv/bin/activate
 python create_admin.py --username admin --password <安全密码>
 ```
 
-验收：浏览器访问 http://162.14.78.163 能正常使用系统。
+验收：浏览器访问 http://<server-ip-or-domain> 能正常使用系统。
 
 ---

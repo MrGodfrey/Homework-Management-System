@@ -19,13 +19,32 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-REMOTE_ALIAS="${REMOTE_ALIAS:-tencent-prod}"
-REMOTE_PUBLIC_URL="${REMOTE_PUBLIC_URL:-http://162.14.78.163}"
-PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/classroom}"
+load_env_file() {
+  if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/.env"
+    set +a
+  fi
+}
+
+require_env_var() {
+  local name="$1"
+  if [[ -z "${!name:-}" ]]; then
+    echo "缺少环境变量：$name。请在本地 .env 中配置，参考 .env.example。"
+    exit 1
+  fi
+}
+
+load_env_file
+require_env_var REMOTE_ALIAS
+require_env_var REMOTE_PUBLIC_URL
+require_env_var PROJECT_DIR
+require_env_var BACKEND_SERVICE
+require_env_var FRONTEND_PUBLISH_DIR
+
 BACKEND_DIR="${BACKEND_DIR:-$PROJECT_DIR/backend}"
 FRONTEND_DIR="${FRONTEND_DIR:-$PROJECT_DIR/frontend}"
-BACKEND_SERVICE="${BACKEND_SERVICE:-classroom-backend}"
-FRONTEND_PUBLISH_DIR="${FRONTEND_PUBLISH_DIR:-/var/www/classroom}"
 
 MODE="full"
 

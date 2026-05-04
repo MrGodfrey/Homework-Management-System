@@ -29,16 +29,12 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import Instructor, Student
 
-DEFAULT_ADMIN_USERNAME = "local_admin"
-DEFAULT_ADMIN_PASSWORD = "LocalAdmin123!"
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed local preview data.")
     parser.add_argument("--force", action="store_true", help="allow running outside ENV=DEV")
     parser.add_argument("--reset-admin-password", action="store_true", help="reset admin password if the admin already exists")
-    parser.add_argument("--admin-username", default=DEFAULT_ADMIN_USERNAME)
-    parser.add_argument("--admin-password", default=DEFAULT_ADMIN_PASSWORD)
+    parser.add_argument("--admin-username", default=os.getenv("LOCAL_PREVIEW_ADMIN_USERNAME", "local_admin"))
+    parser.add_argument("--admin-password", default=os.getenv("LOCAL_PREVIEW_ADMIN_PASSWORD"))
     return parser.parse_args()
 
 
@@ -124,6 +120,11 @@ def seed_students(db) -> int:
 
 def main() -> int:
     args = parse_args()
+    if not args.admin_password:
+        raise SystemExit(
+            "Missing local preview admin password. Set LOCAL_PREVIEW_ADMIN_PASSWORD "
+            "in .env or pass --admin-password."
+        )
     ensure_safe_environment(args.force)
     ensure_schema()
 

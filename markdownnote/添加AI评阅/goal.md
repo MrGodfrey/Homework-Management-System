@@ -26,10 +26,10 @@
 
 ## 执行记录
 
-- 生产安全确认：`./deploy.sh` 远端预检输出 `DATABASE_URL=sqlite:///./classroom.db`，实际 DB 文件 `/home/ubuntu/classroom/backend/classroom.db`，备份 `/home/ubuntu/classroom/backend/backups/classroom_backup_20260504_212513.db`，恢复命令 `cd /home/ubuntu/classroom/backend && cp backups/classroom_backup_20260504_212513.db ./classroom.db`，迁移命令 `alembic upgrade head`，回滚命令 `alembic downgrade -1`。
+- 生产安全确认：`./deploy.sh` 远端预检输出 `DATABASE_URL=sqlite:///./classroom.db`，实际 DB 文件 `<project-dir>/backend/classroom.db`，备份 `<project-dir>/backend/backups/classroom_backup_20260504_212513.db`，恢复命令 `cd <project-dir>/backend && cp backups/classroom_backup_20260504_212513.db ./classroom.db`，迁移命令 `alembic upgrade head`，回滚命令 `alembic downgrade -1`。
 - 生产部署：`./deploy.sh` 已按 `backup DB -> verify backup exists -> sync code -> install deps -> migrate -> restart -> smoke test` 执行，Alembic 从 `6c9664356acb` 升级到 `91c7b6879b9c (head)`，脚本内置远端 smoke test 通过。
 - 本地测试：`npm run setup:test-env`、`npm run test:backend`、`npm --prefix frontend run build`、`npm run test:web` 均通过；`ENV=DEV python start_local_test.py` 已验证可启动本地预览。
-- 生产配置补充：线上首次 AI smoke 发现 `TENCENT_MODEL_KEY_SECRET` 未配置到后端运行环境；已将本地 `.env` 中的 AI 模型相关键同步到生产 `/home/ubuntu/classroom/backend/.env`，并先备份为 `/home/ubuntu/classroom/backend/.env.backup_ai_20260504_213305`，随后重启 `classroom-backend` 确认 active。
+- 生产配置补充：线上首次 AI smoke 发现 `TENCENT_MODEL_KEY_SECRET` 未配置到后端运行环境；已将本地 `.env` 中的 AI 模型相关键同步到生产 `<project-dir>/backend/.env`，并先备份为 `<project-dir>/backend/.env.backup_ai_<timestamp>_213305`，随后重启 `<backend-service-name>` 确认 active。
 - 应用级线上烟测：`scripts/smoke_ai_online.py --confirm-production-write` 已通过，覆盖线上学生 Markdown/Notebook 提交、压缩包拒绝、学生提交后不自动生成 AI、教师保存 AI 评分参考、单个版本 AI 初评、批量 AI 初评、Notebook outputs/images/attachments 忽略、教师保存最终分、学生端不展示 AI 字段且只展示最终分。临时 smoke 作业和学生已清理，复查剩余 smoke 记录为 0。
 ## 完成判断标准
 

@@ -2,11 +2,11 @@
 
 1. Treat this repository as mapped to a live production system. Do not run destructive production operations unless the user explicitly asks.
 2. Production target currently documented in-repo:
-   - host alias: `tencent-prod`
-   - server IP: `162.14.78.163`
-   - app root: `/home/ubuntu/classroom`
-   - backend service: `classroom-backend`
-   - frontend publish dir: `/var/www/classroom`
+   - host alias: `<ssh-host-alias>`
+   - server IP: `<server-ip-or-domain>`
+   - app root: `<project-dir>`
+   - backend service: `<backend-service-name>`
+   - frontend publish dir: `<frontend-publish-dir>`
 3. Before any database-affecting change, confirm:
    - current DB engine/path
    - backup location and restore command

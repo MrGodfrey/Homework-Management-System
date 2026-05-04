@@ -26,5 +26,6 @@ test-results/
 passwords.csv
 true_students.csv
 true_password.csv
+*password*.csv
 cloudTest.md
 改进清单.md

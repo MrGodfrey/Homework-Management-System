@@ -1,8 +1,14 @@
 import os
+from pathlib import Path
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BACKEND_DIR.parent
+
 class Settings(BaseSettings):
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "supersecretkey")
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
@@ -28,10 +34,25 @@ class Settings(BaseSettings):
     AI_GRADING_TIMEOUT_SECONDS: int = int(os.getenv("AI_GRADING_TIMEOUT_SECONDS", "60"))
     AI_GRADING_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_DAILY_LIMIT", "200"))
     AI_GRADING_ASSIGNMENT_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_ASSIGNMENT_DAILY_LIMIT", "100"))
-    AI_GRADING_FAKE_RESPONSE: bool = os.getenv("AI_GRADING_FAKE_RESPONSE", "").lower() in {"1", "true", "yes"}
+    AI_GRADING_FAKE_RESPONSE: bool = False
+
+    @field_validator("AI_GRADING_FAKE_RESPONSE", mode="before")
+    @classmethod
+    def parse_optional_bool(cls, value):
+        if value is None:
+            return False
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return False
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return value
 
     class Config:
-        env_file = ".env"
+        env_file = (PROJECT_ROOT / ".env", BACKEND_DIR / ".env")
         extra = "ignore"
 
 settings = Settings()

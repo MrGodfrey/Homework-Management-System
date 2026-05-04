@@ -103,7 +103,7 @@ def main() -> int:
     if not args.confirm_production_write:
         raise SystemExit("Refusing to run without --confirm-production-write")
 
-    base_url = os.getenv("CLASSROOM_BASE_URL", "http://162.14.78.163")
+    base_url = env_required("CLASSROOM_BASE_URL")
     admin_username = env_required("CLASSROOM_ADMIN_USERNAME")
     admin_password = env_required("CLASSROOM_ADMIN_PASSWORD")
 
