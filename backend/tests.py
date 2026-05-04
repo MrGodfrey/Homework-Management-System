@@ -1,4 +1,5 @@
 import os
+import time
 import zipfile
 from datetime import timedelta
 from io import BytesIO
@@ -100,6 +101,17 @@ def zip_entries(response):
     assert response.status_code == 200
     with zipfile.ZipFile(BytesIO(response.content)) as zf:
         return sorted(zf.namelist())
+
+
+def wait_for_export_job(client, job_id):
+    for _ in range(50):
+        response = client.get(f"/api/admin/assignments/download-all/jobs/{job_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        if payload["status"] in {"complete", "failed"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError("export job did not finish")
 
 
 def create_assignment(db, title="Essay Draft", file_rules=".pdf,.md,.zip"):
@@ -218,3 +230,56 @@ def test_all_assignments_download_uses_assignment_student_version_folders(classr
     assert "HW2_Lab 1 _ Zip/" in entries
     assert "HW2_Lab 1 _ Zip/20230001_Alice/v1/lab.zip" in entries
     assert "HW2_Lab 1 _ Zip/20230002_Bob/" in entries
+
+
+def test_all_assignments_latest_download_uses_only_latest_submissions(classroom_client):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        essay = create_assignment(db, title="Essay Draft")
+        lab = create_assignment(db, title="Lab 1 / Zip")
+        create_submission(db, storage, essay, "20230001", 1, "alice-v1.pdf")
+        create_submission(db, storage, essay, "20230001", 2, "alice-v2.md")
+        create_submission(db, storage, essay, "20230002", 1, "bob-v1.md")
+        create_submission(db, storage, lab, "20230001", 1, "lab.zip")
+    finally:
+        db.close()
+
+    response = client.get("/api/admin/assignments/download-all?mode=latest")
+    entries = zip_entries(response)
+
+    assert "HW1_Essay Draft/20230001_Alice/alice-v2.md" in entries
+    assert "HW1_Essay Draft/20230001_Alice/alice-v1.pdf" not in entries
+    assert "HW1_Essay Draft/20230001_Alice/v2/alice-v2.md" not in entries
+    assert "HW1_Essay Draft/20230002_Bob/bob-v1.md" in entries
+    assert "HW2_Lab 1 _ Zip/20230001_Alice/lab.zip" in entries
+    assert "HW2_Lab 1 _ Zip/20230002_Bob/" in entries
+
+
+def test_all_assignments_export_job_reports_progress_and_downloads_zip(classroom_client):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        essay = create_assignment(db, title="Essay Draft")
+        create_submission(db, storage, essay, "20230001", 1, "alice-v1.pdf")
+        create_submission(db, storage, essay, "20230001", 2, "alice-v2.md")
+        create_submission(db, storage, essay, "20230002", 1, "bob-v1.md")
+    finally:
+        db.close()
+
+    create_response = client.post("/api/admin/assignments/download-all/jobs?mode=latest")
+    assert create_response.status_code == 200
+    job = create_response.json()
+    assert job["mode"] == "latest"
+    assert job["total_files"] == 2
+
+    completed = wait_for_export_job(client, job["job_id"])
+    assert completed["status"] == "complete"
+    assert completed["percent"] == 100
+    assert completed["processed_files"] == 2
+
+    file_response = client.get(f"/api/admin/assignments/download-all/jobs/{job['job_id']}/file")
+    entries = zip_entries(file_response)
+    assert "HW1_Essay Draft/20230001_Alice/alice-v2.md" in entries
+    assert "HW1_Essay Draft/20230001_Alice/alice-v1.pdf" not in entries
+    assert "HW1_Essay Draft/20230002_Bob/bob-v1.md" in entries

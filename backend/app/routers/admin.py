@@ -3,6 +3,9 @@ import io
 import os
 import re
 import tempfile
+import threading
+import time
+import uuid
 import zipfile
 import secrets
 import string
@@ -13,6 +16,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
 from app.database import get_db
@@ -39,6 +43,10 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(get_current_instructor)]
 )
+
+EXPORT_JOB_TTL_SECONDS = 60 * 60
+_export_jobs: dict[str, dict] = {}
+_export_jobs_lock = threading.Lock()
 
 
 def _safe_zip_segment(value: object, fallback: str) -> str:
@@ -96,6 +104,232 @@ def _write_submission_files(
             zf.writestr(arcname, file_bytes)
         except Exception as e:
             print(f"Failed to download {file.cos_key} from storage: {e}")
+
+
+def _validate_assignment_export_mode(mode: str) -> str:
+    if mode not in {"latest", "all"}:
+        raise HTTPException(status_code=400, detail="mode must be latest or all")
+    return mode
+
+
+def _build_all_assignments_export_plan(db: Session, mode: str) -> dict:
+    mode = _validate_assignment_export_mode(mode)
+    assignments = db.query(Assignment).order_by(Assignment.id).all()
+    if not assignments:
+        raise HTTPException(status_code=404, detail="No assignments found to download")
+
+    students = db.query(Student).order_by(Student.student_id).all()
+    assignment_ids = [assignment.id for assignment in assignments]
+    submissions = (
+        db.query(Submission)
+        .options(selectinload(Submission.files))
+        .filter(Submission.assignment_id.in_(assignment_ids))
+        .join(Student)
+        .order_by(Submission.assignment_id, Student.student_id, Submission.version_no)
+        .all()
+    )
+
+    subs_by_assignment_student: dict[tuple[int, int], list[dict]] = {}
+    for sub in submissions:
+        sub_record = {
+            "assignment_id": sub.assignment_id,
+            "student_id": sub.student_id,
+            "version_no": sub.version_no,
+            "files": [
+                {"id": file.id, "filename": file.filename, "cos_key": file.cos_key}
+                for file in sub.files
+            ],
+        }
+        subs_by_assignment_student.setdefault((sub.assignment_id, sub.student_id), []).append(sub_record)
+
+    directories: list[str] = []
+    file_entries: list[dict] = []
+    for assignment in assignments:
+        assignment_folder = _assignment_folder(assignment)
+        directories.append(f"{assignment_folder}/")
+
+        for student in students:
+            student_folder = f"{assignment_folder}/{_student_folder(student)}"
+            directories.append(f"{student_folder}/")
+
+            student_subs = subs_by_assignment_student.get((assignment.id, student.id), [])
+            if mode == "latest":
+                if not student_subs:
+                    continue
+                latest_sub = max(student_subs, key=lambda sub: sub["version_no"])
+                for file in latest_sub["files"]:
+                    file_entries.append({
+                        "base_folder": student_folder,
+                        "filename": file["filename"],
+                        "cos_key": file["cos_key"],
+                        "fallback": f"file_{file['id']}",
+                    })
+                continue
+
+            for sub in student_subs:
+                version_folder = f"{student_folder}/v{sub['version_no']}"
+                directories.append(f"{version_folder}/")
+                for file in sub["files"]:
+                    file_entries.append({
+                        "base_folder": version_folder,
+                        "filename": file["filename"],
+                        "cos_key": file["cos_key"],
+                        "fallback": f"file_{file['id']}",
+                    })
+
+    filename = "latest_assignments_submissions.zip" if mode == "latest" else "all_assignments_submissions.zip"
+    return {
+        "mode": mode,
+        "directories": directories,
+        "file_entries": file_entries,
+        "filename": filename,
+        "total_files": len(file_entries),
+    }
+
+
+def _write_all_assignments_export_zip(plan: dict, progress_callback=None) -> tuple[str, int]:
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_zip_path = temp_zip.name
+    temp_zip.close()
+
+    used_arcnames: set[str] = set()
+    processed_files = 0
+    skipped_files = 0
+    total_files = plan["total_files"]
+
+    with zipfile.ZipFile(temp_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for directory in plan["directories"]:
+            zf.writestr(_dedupe_arcname(directory, used_arcnames), "")
+
+        for entry in plan["file_entries"]:
+            try:
+                file_bytes = read_file_from_storage(entry["cos_key"])
+                filename = _safe_zip_segment(entry["filename"], entry["fallback"])
+                raw_arcname = f"{entry['base_folder']}/{filename}"
+                arcname = _dedupe_arcname(raw_arcname, used_arcnames)
+                zf.writestr(arcname, file_bytes)
+            except Exception as e:
+                skipped_files += 1
+                logger.warning("Failed to add %s to export ZIP: %s", entry["cos_key"], e)
+            finally:
+                processed_files += 1
+                if progress_callback:
+                    progress_callback(processed_files, total_files, skipped_files)
+
+    return temp_zip_path, skipped_files
+
+
+def _cleanup_export_jobs() -> None:
+    now = time.time()
+    file_paths_to_remove: list[str] = []
+    with _export_jobs_lock:
+        for job_id, job in list(_export_jobs.items()):
+            if now - job["created_at_ts"] <= EXPORT_JOB_TTL_SECONDS:
+                continue
+            file_path = job.get("file_path")
+            if file_path:
+                file_paths_to_remove.append(file_path)
+            del _export_jobs[job_id]
+
+    for file_path in file_paths_to_remove:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            logger.warning("Failed to remove expired export file %s", file_path)
+
+
+def _public_export_job(job: dict) -> dict:
+    return {
+        "job_id": job["job_id"],
+        "mode": job["mode"],
+        "status": job["status"],
+        "percent": job["percent"],
+        "processed_files": job["processed_files"],
+        "total_files": job["total_files"],
+        "skipped_files": job.get("skipped_files", 0),
+        "filename": job["filename"],
+        "message": job["message"],
+        "error": job.get("error"),
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+    }
+
+
+def _get_export_job_or_404(job_id: str) -> dict:
+    with _export_jobs_lock:
+        job = _export_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Export job not found")
+        return dict(job)
+
+
+def _update_export_job(job_id: str, **updates) -> None:
+    with _export_jobs_lock:
+        job = _export_jobs.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+        job["updated_at"] = beijing_now().isoformat()
+
+
+def _delete_export_job_file(job_id: str) -> None:
+    file_path = None
+    with _export_jobs_lock:
+        job = _export_jobs.pop(job_id, None)
+        if job:
+            file_path = job.get("file_path")
+    if not file_path:
+        return
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except OSError:
+        logger.warning("Failed to remove downloaded export file %s", file_path)
+
+
+def _run_all_assignments_export_job(job_id: str, plan: dict) -> None:
+    total_files = plan["total_files"]
+    _update_export_job(
+        job_id,
+        status="running",
+        percent=0,
+        message="正在打包导出文件" if total_files else "正在生成空目录结构",
+    )
+
+    def update_progress(processed_files: int, total: int, skipped_files: int) -> None:
+        percent = 99 if total == 0 else min(99, int(processed_files * 100 / total))
+        _update_export_job(
+            job_id,
+            processed_files=processed_files,
+            skipped_files=skipped_files,
+            percent=percent,
+            message=f"已处理 {processed_files}/{total} 个文件",
+        )
+
+    try:
+        file_path, skipped_files = _write_all_assignments_export_zip(plan, update_progress)
+        message = "导出文件已生成"
+        if skipped_files:
+            message = f"导出文件已生成，{skipped_files} 个文件读取失败已跳过"
+        _update_export_job(
+            job_id,
+            status="complete",
+            percent=100,
+            processed_files=total_files,
+            skipped_files=skipped_files,
+            file_path=file_path,
+            message=message,
+        )
+    except Exception as e:
+        logger.exception("All assignments export job failed")
+        _update_export_job(
+            job_id,
+            status="failed",
+            percent=0,
+            error=str(e),
+            message="导出失败",
+        )
 
 @router.get("/students", response_model=List[StudentOut])
 def get_students(db: Session = Depends(get_db)):
@@ -666,46 +900,71 @@ def download_single_student_submission(
     return FileResponse(temp_zip.name, media_type="application/zip", filename=zip_filename)
 
 @router.get("/assignments/download-all")
-def download_all_assignments_submissions(db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
-    """导出全部作业文件：作业 / 学生 / 版本 / 文件。"""
-    assignments = db.query(Assignment).order_by(Assignment.id).all()
-    if not assignments:
-        raise HTTPException(status_code=404, detail="No assignments found to download")
+def download_all_assignments_submissions(
+    mode: str = "all",
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
+):
+    """导出全部作业文件。mode=all 为所有版本，mode=latest 为每名学生最新版。"""
+    plan = _build_all_assignments_export_plan(db, mode)
+    temp_zip_path, _skipped_files = _write_all_assignments_export_zip(plan)
 
-    students = db.query(Student).order_by(Student.student_id).all()
-    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    used_arcnames: set[str] = set()
-    with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for assignment in assignments:
-            assignment_folder = _assignment_folder(assignment)
-            zf.writestr(_dedupe_arcname(f"{assignment_folder}/", used_arcnames), "")
-
-            subs = (
-                db.query(Submission)
-                .filter(Submission.assignment_id == assignment.id)
-                .join(Student)
-                .order_by(Student.student_id, Submission.version_no)
-                .all()
-            )
-            subs_by_student: dict[int, list[Submission]] = {}
-            for sub in subs:
-                subs_by_student.setdefault(sub.student_id, []).append(sub)
-
-            for student in students:
-                student_folder = f"{assignment_folder}/{_student_folder(student)}"
-                zf.writestr(_dedupe_arcname(f"{student_folder}/", used_arcnames), "")
-                for sub in subs_by_student.get(student.id, []):
-                    version_folder = f"v{sub.version_no}"
-                    base_folder = f"{student_folder}/{version_folder}"
-                    zf.writestr(_dedupe_arcname(f"{base_folder}/", used_arcnames), "")
-                    _write_submission_files(zf, sub, base_folder, used_arcnames)
-
-    temp_zip.close()
-    
     if background_tasks:
-        background_tasks.add_task(os.remove, temp_zip.name)
-        
-    return FileResponse(temp_zip.name, media_type="application/zip", filename="all_assignments_submissions.zip")
+        background_tasks.add_task(os.remove, temp_zip_path)
+
+    return FileResponse(temp_zip_path, media_type="application/zip", filename=plan["filename"])
+
+
+@router.post("/assignments/download-all/jobs")
+def create_all_assignments_export_job(mode: str = "latest", db: Session = Depends(get_db)):
+    """创建全部作业导出任务，供前端轮询进度。"""
+    _cleanup_export_jobs()
+    plan = _build_all_assignments_export_plan(db, mode)
+    now = beijing_now().isoformat()
+    job_id = uuid.uuid4().hex
+    job = {
+        "job_id": job_id,
+        "mode": plan["mode"],
+        "status": "pending",
+        "percent": 0,
+        "processed_files": 0,
+        "total_files": plan["total_files"],
+        "skipped_files": 0,
+        "filename": plan["filename"],
+        "message": "导出任务已创建",
+        "error": None,
+        "file_path": None,
+        "created_at": now,
+        "updated_at": now,
+        "created_at_ts": time.time(),
+    }
+    with _export_jobs_lock:
+        _export_jobs[job_id] = job
+
+    worker = threading.Thread(target=_run_all_assignments_export_job, args=(job_id, plan), daemon=True)
+    worker.start()
+    return _public_export_job(job)
+
+
+@router.get("/assignments/download-all/jobs/{job_id}")
+def get_all_assignments_export_job(job_id: str):
+    _cleanup_export_jobs()
+    return _public_export_job(_get_export_job_or_404(job_id))
+
+
+@router.get("/assignments/download-all/jobs/{job_id}/file")
+def download_all_assignments_export_job_file(job_id: str, background_tasks: BackgroundTasks = None):
+    job = _get_export_job_or_404(job_id)
+    if job["status"] != "complete":
+        raise HTTPException(status_code=409, detail="Export job is not complete")
+    file_path = job.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Export file not found")
+
+    if background_tasks:
+        background_tasks.add_task(_delete_export_job_file, job_id)
+
+    return FileResponse(file_path, media_type="application/zip", filename=job["filename"])
 
 @router.get("/assignments/{assignment_id}/download")
 def download_submissions(assignment_id: int, mode: str = "latest", db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):

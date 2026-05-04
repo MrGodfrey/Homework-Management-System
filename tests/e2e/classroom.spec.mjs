@@ -337,8 +337,21 @@ test("website regression covers the full classroom workflow", async ({ browser }
     expect(allGradesText).toContain("学号,姓名,互动次数,Essay Draft,Past Due Quiz");
     expect(allGradesText).toContain("20230001,Alice,1,92");
 
+    const latestAssignmentsPromise = adminPage.waitForEvent("download");
+    await adminPage.getByRole("button", { name: /导出最新版/ }).click();
+    await expect(adminPage.locator(".export-progress-panel")).toBeVisible();
+    await expect(adminPage.locator(".export-progress-panel")).toContainText("导出最新版");
+    await expect(adminPage.locator(".export-progress-panel")).toContainText(/已处理|正在创建导出任务|正在打包导出文件|下载已开始/);
+    const latestAssignmentsZip = await latestAssignmentsPromise;
+    const latestAssignmentsEntries = await readDownloadZipEntries(latestAssignmentsZip);
+    expect(latestAssignmentsEntries).not.toContain("HW1_Essay Draft/20230001_Alice/v1/essay-v1.pdf");
+    expect(latestAssignmentsEntries).toContain("HW1_Essay Draft/20230001_Alice/essay-v2.md");
+    expect(latestAssignmentsEntries).toContain("HW1_Essay Draft/20230002_Bob/bob-notes.md");
+
     const allAssignmentsPromise = adminPage.waitForEvent("download");
-    await adminPage.getByRole("button", { name: /导出全部作业/ }).click();
+    await adminPage.getByRole("button", { name: /导出所有作业/ }).click();
+    await expect(adminPage.locator(".export-progress-panel")).toBeVisible();
+    await expect(adminPage.locator(".export-progress-panel")).toContainText("导出所有作业");
     const allAssignmentsZip = await allAssignmentsPromise;
     const allAssignmentsEntries = await readDownloadZipEntries(allAssignmentsZip);
     expect(allAssignmentsEntries).toContain("HW1_Essay Draft/20230001_Alice/v1/essay-v1.pdf");

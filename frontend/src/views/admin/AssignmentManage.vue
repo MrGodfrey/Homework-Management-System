@@ -7,9 +7,44 @@
         </div>
 
         <div class="page-hero-actions">
-          <el-button type="success" @click="exportAllGradesCSV">导出成绩</el-button>
-          <el-button type="warning" plain :loading="exportingAllSubmissions" @click="exportAllSubmissionsZip">导出全部作业</el-button>
+          <el-button type="success" :disabled="exportState.active" @click="exportAllGradesCSV">导出成绩</el-button>
+          <el-button
+            type="warning"
+            plain
+            :loading="exportState.active && exportState.mode === 'all'"
+            :disabled="exportState.active && exportState.mode !== 'all'"
+            @click="exportAllSubmissionsZip('all')"
+          >
+            导出所有作业
+          </el-button>
+          <el-button
+            type="warning"
+            :loading="exportState.active && exportState.mode === 'latest'"
+            :disabled="exportState.active && exportState.mode !== 'latest'"
+            @click="exportAllSubmissionsZip('latest')"
+          >
+            导出最新版
+          </el-button>
           <el-button type="primary" @click="openCreate">新建作业</el-button>
+        </div>
+      </section>
+
+      <section v-if="showExportProgress" class="export-progress-panel" aria-live="polite">
+        <div class="export-progress-head">
+          <div>
+            <div class="export-progress-title">{{ exportModeLabel }}</div>
+            <div class="export-progress-copy">{{ exportState.message }}</div>
+          </div>
+          <div class="export-progress-percent">{{ exportState.percent }}%</div>
+        </div>
+        <el-progress
+          :percentage="exportState.percent"
+          :stroke-width="10"
+          :status="exportProgressStatus"
+        />
+        <div class="export-progress-meta">
+          <span>已处理 {{ exportState.processedFiles }} / {{ exportState.totalFiles }} 个文件</span>
+          <span v-if="exportState.skippedFiles > 0">{{ exportState.skippedFiles }} 个文件读取失败已跳过</span>
         </div>
       </section>
 
@@ -216,7 +251,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Document, FolderOpened, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
@@ -232,19 +267,41 @@ const totalStudents = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
-const exportingAllSubmissions = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
 const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
 const attachmentFiles = ref([])
 const uploadingAttachment = ref(false)
+const EXPORT_POLL_INTERVAL_MS = 600
+const exportPollingTimer = ref(null)
+const exportResetTimer = ref(null)
+const exportDownloadStarted = ref(false)
+const exportState = reactive({
+  active: false,
+  jobId: null,
+  mode: null,
+  status: 'idle',
+  percent: 0,
+  processedFiles: 0,
+  totalFiles: 0,
+  skippedFiles: 0,
+  filename: '',
+  message: ''
+})
 const uploadLimit = reactive({
   maxBytes: DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
   label: formatFileSize(DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES)
 })
 
 const attachmentReadyCount = computed(() => assignments.value.filter((item) => item.id).length)
+const showExportProgress = computed(() => exportState.active || ['complete', 'failed'].includes(exportState.status))
+const exportModeLabel = computed(() => (exportState.mode === 'all' ? '导出所有作业' : '导出最新版'))
+const exportProgressStatus = computed(() => {
+  if (exportState.status === 'failed') return 'exception'
+  if (exportState.status === 'complete') return 'success'
+  return undefined
+})
 
 watch(
   selectedFormats,
@@ -409,23 +466,135 @@ async function exportAllGradesCSV() {
   }
 }
 
-async function exportAllSubmissionsZip() {
-  exportingAllSubmissions.value = true
+function clearExportPolling() {
+  if (exportPollingTimer.value) {
+    window.clearInterval(exportPollingTimer.value)
+    exportPollingTimer.value = null
+  }
+}
+
+function clearExportResetTimer() {
+  if (exportResetTimer.value) {
+    window.clearTimeout(exportResetTimer.value)
+    exportResetTimer.value = null
+  }
+}
+
+function resetExportState() {
+  clearExportPolling()
+  clearExportResetTimer()
+  exportDownloadStarted.value = false
+  Object.assign(exportState, {
+    active: false,
+    jobId: null,
+    mode: null,
+    status: 'idle',
+    percent: 0,
+    processedFiles: 0,
+    totalFiles: 0,
+    skippedFiles: 0,
+    filename: '',
+    message: ''
+  })
+}
+
+function applyExportProgress(data) {
+  exportState.jobId = data.job_id || exportState.jobId
+  exportState.mode = data.mode || exportState.mode
+  exportState.status = data.status || exportState.status
+  exportState.percent = Math.max(0, Math.min(100, Number(data.percent || 0)))
+  exportState.processedFiles = Number(data.processed_files || 0)
+  exportState.totalFiles = Number(data.total_files || 0)
+  exportState.skippedFiles = Number(data.skipped_files || 0)
+  exportState.filename = data.filename || exportState.filename
+  exportState.message = data.message || exportState.message
+}
+
+function scheduleExportReset() {
+  clearExportResetTimer()
+  exportResetTimer.value = window.setTimeout(() => {
+    resetExportState()
+  }, 1800)
+}
+
+function triggerBlobDownload(blob, filename) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+function handleExportFailure(error) {
+  clearExportPolling()
+  exportState.active = false
+  exportState.status = 'failed'
+  exportState.message = error?.response?.data?.detail || error?.message || '导出失败'
+  ElMessage.error(exportState.message)
+  scheduleExportReset()
+}
+
+async function downloadCompletedExport() {
+  if (!exportState.jobId || exportDownloadStarted.value) return
+  exportDownloadStarted.value = true
+  clearExportPolling()
+
   try {
-    const res = await api.get('/admin/assignments/download-all', { responseType: 'blob' })
-    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', 'all_assignments_submissions.zip')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    ElMessage.success('全部作业导出成功')
+    const res = await api.get(`/admin/assignments/download-all/jobs/${exportState.jobId}/file`, {
+      responseType: 'blob'
+    })
+    triggerBlobDownload(new Blob([res.data], { type: 'application/zip' }), exportState.filename || 'assignments.zip')
+    exportState.active = false
+    exportState.status = 'complete'
+    exportState.percent = 100
+    exportState.message = '下载已开始'
+    ElMessage.success('作业导出成功')
+    scheduleExportReset()
   } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '导出失败')
-  } finally {
-    exportingAllSubmissions.value = false
+    exportDownloadStarted.value = false
+    handleExportFailure(e)
+  }
+}
+
+async function pollExportJob() {
+  if (!exportState.jobId || exportDownloadStarted.value) return
+
+  try {
+    const res = await api.get(`/admin/assignments/download-all/jobs/${exportState.jobId}`)
+    applyExportProgress(res.data)
+
+    if (exportState.status === 'complete') {
+      await downloadCompletedExport()
+    } else if (exportState.status === 'failed') {
+      throw new Error(exportState.message || '导出失败')
+    }
+  } catch (e) {
+    handleExportFailure(e)
+  }
+}
+
+async function exportAllSubmissionsZip(mode) {
+  if (exportState.active) return
+
+  resetExportState()
+  exportState.active = true
+  exportState.mode = mode
+  exportState.status = 'pending'
+  exportState.message = '正在创建导出任务'
+
+  try {
+    const res = await api.post('/admin/assignments/download-all/jobs', null, { params: { mode } })
+    applyExportProgress(res.data)
+    exportState.active = true
+    await pollExportJob()
+    if (exportState.active && !exportPollingTimer.value) {
+      exportPollingTimer.value = window.setInterval(pollExportJob, EXPORT_POLL_INTERVAL_MS)
+    }
+  } catch (e) {
+    handleExportFailure(e)
   }
 }
 
@@ -507,6 +676,11 @@ onMounted(() => {
   loadAssignments()
   loadTotalStudents()
 })
+
+onBeforeUnmount(() => {
+  clearExportPolling()
+  clearExportResetTimer()
+})
 </script>
 
 <style scoped>
@@ -537,6 +711,48 @@ onMounted(() => {
   margin: 0 0 18px;
 }
 
+.export-progress-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.export-progress-head,
+.export-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-progress-title {
+  color: var(--text-strong);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.export-progress-copy,
+.export-progress-meta {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.export-progress-copy {
+  margin-top: 4px;
+}
+
+.export-progress-percent {
+  color: var(--brand);
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .attachment-stack {
   display: grid;
   gap: 10px;
@@ -559,6 +775,12 @@ onMounted(() => {
   .dialog-footer {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .export-progress-head,
+  .export-progress-meta {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
