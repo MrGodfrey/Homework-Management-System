@@ -83,7 +83,7 @@
                 <el-button type="primary">选择文件</el-button>
                 <template #tip>
                   <div class="upload-tip">
-                    支持多文件同时上传；一次提交总大小不超过 {{ uploadLimit.label }}，压缩包也计入总大小。
+                    支持多文件同时上传；一次提交总大小不超过 {{ uploadLimit.label }}，不支持压缩包。
                   </div>
                 </template>
               </el-upload>
@@ -152,6 +152,7 @@ const uploadLimit = reactive({
 const selectedFilesSize = computed(() => totalRawFileSize(fileList.value))
 const selectedFilesSizeLabel = computed(() => formatFileSize(selectedFilesSize.value))
 const isOverUploadLimit = computed(() => selectedFilesSize.value > uploadLimit.maxBytes)
+const compressedExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tgz', '.tar.gz']
 
 onMounted(() => {
   loadAssignment()
@@ -178,10 +179,21 @@ function removePendingFile(uid) {
 }
 
 function handlePendingFilesChange(_file, uploadFiles = fileList.value) {
+  const blockedFiles = uploadFiles.filter((item) => isCompressedFilename(item.name))
+  if (blockedFiles.length > 0) {
+    ElMessage.error(`不支持上传压缩包：${blockedFiles.map((item) => item.name).join('、')}`)
+    fileList.value = uploadFiles.filter((item) => !isCompressedFilename(item.name))
+    return
+  }
   const nextSize = totalRawFileSize(uploadFiles)
   if (nextSize > uploadLimit.maxBytes) {
     ElMessage.warning(`当前选择文件合计 ${formatFileSize(nextSize)}，超过 ${uploadLimit.label} 上限。请压缩或分拆后再提交。`)
   }
+}
+
+function isCompressedFilename(filename) {
+  const lower = String(filename || '').toLowerCase()
+  return compressedExtensions.some((ext) => lower.endsWith(ext))
 }
 
 async function submitFiles() {
@@ -191,6 +203,11 @@ async function submitFiles() {
   }
   if (isOverUploadLimit.value) {
     ElMessage.warning(`当前选择文件合计 ${selectedFilesSizeLabel.value}，超过 ${uploadLimit.label} 上限。请压缩或分拆后再提交。`)
+    return
+  }
+  const blockedFiles = fileList.value.filter((item) => isCompressedFilename(item.name))
+  if (blockedFiles.length > 0) {
+    ElMessage.error(`不支持上传压缩包：${blockedFiles.map((item) => item.name).join('、')}`)
     return
   }
   const formData = new FormData()

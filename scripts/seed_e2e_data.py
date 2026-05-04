@@ -47,6 +47,7 @@ def main() -> None:
             deadline=now + timedelta(days=7),
             allow_late=False,
             file_rules=".pdf,.md",
+            ai_grading_rubric="检查 Markdown 草稿是否说明主要观点、结构和证据，给出 0-100 的建议分。",
         )
         past_due_assignment = Assignment(
             title="Past Due Quiz",

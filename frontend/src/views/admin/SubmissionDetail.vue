@@ -12,6 +12,7 @@
         </div>
 
         <div class="page-hero-actions">
+          <el-button type="success" plain :loading="aiBatchLoading" @click="batchGenerateAIReview">批量生成 AI 初评</el-button>
           <el-button @click="exportCSV" :loading="exporting">导出CSV</el-button>
           <el-button @click="downloadZip('latest')" :loading="downloading === 'latest'">最新版</el-button>
           <el-button type="primary" @click="downloadZip('all')" :loading="downloading === 'all'">全部版本</el-button>
@@ -77,10 +78,46 @@
                         <el-tag v-else effect="light">待评分</el-tag>
                       </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="180" align="center">
+                    <el-table-column label="AI 初评" min-width="150" align="center">
+                      <template #default="{ row: sub }">
+                        <div class="ai-status-cell">
+                          <el-tag :type="aiStatusType(sub.ai_review_status)" effect="light">
+                            {{ aiStatusLabel(sub.ai_review_status) }}
+                          </el-tag>
+                          <span v-if="sub.ai_score !== null && sub.ai_score !== undefined" class="ai-score">{{ sub.ai_score }}分</span>
+                        </div>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="360" align="center">
                       <template #default="{ row: sub }">
                         <div class="inline-actions">
                           <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
+                          <el-button
+                            size="small"
+                            type="success"
+                            plain
+                            :loading="aiGeneratingId === sub.id"
+                            @click="generateAIReview(sub, false)"
+                          >
+                            生成 AI 初评
+                          </el-button>
+                          <el-button
+                            v-if="sub.ai_review_status === 'succeeded'"
+                            size="small"
+                            @click="showAIReport(sub)"
+                          >
+                            查看 AI 报告
+                          </el-button>
+                          <el-button
+                            v-if="sub.ai_review_status === 'succeeded'"
+                            size="small"
+                            type="warning"
+                            plain
+                            :loading="aiGeneratingId === sub.id"
+                            @click="generateAIReview(sub, true)"
+                          >
+                            重新生成
+                          </el-button>
                           <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
                         </div>
                       </template>
@@ -132,7 +169,12 @@
                   <div class="inline-actions">
                     <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
                     <el-tag v-else effect="light">待评分</el-tag>
+                    <el-tag :type="aiStatusType(sub.ai_review_status)" effect="light">{{ aiStatusLabel(sub.ai_review_status) }}</el-tag>
+                    <span v-if="sub.ai_score !== null && sub.ai_score !== undefined" class="ai-score">{{ sub.ai_score }}分</span>
                     <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
+                    <el-button size="small" type="success" plain :loading="aiGeneratingId === sub.id" @click="generateAIReview(sub, false)">生成 AI 初评</el-button>
+                    <el-button v-if="sub.ai_review_status === 'succeeded'" size="small" @click="showAIReport(sub)">查看报告</el-button>
+                    <el-button v-if="sub.ai_review_status === 'succeeded'" size="small" type="warning" plain :loading="aiGeneratingId === sub.id" @click="generateAIReview(sub, true)">重新生成</el-button>
                     <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
                   </div>
                 </div>
@@ -150,6 +192,18 @@
           <el-form-item label="分数">
             <el-input-number v-model="gradeForm.score" :min="0" :max="100" :step="1" style="width: 100%" />
           </el-form-item>
+          <el-form-item v-if="currentStudent?.ai_review_status === 'succeeded'" label="AI 建议">
+            <div class="ai-grade-reference">
+              <div class="ai-grade-head">
+                <span class="ai-score strong">{{ currentStudent.ai_score }}分</span>
+                <el-tag :type="aiStatusType(currentStudent.ai_review_status)" effect="light">
+                  {{ currentStudent.ai_confidence || 'low' }}
+                </el-tag>
+                <el-button size="small" type="success" plain @click="useAIScore">使用 AI 分数</el-button>
+              </div>
+              <pre class="ai-report-preview">{{ currentStudent.ai_report_text }}</pre>
+            </div>
+          </el-form-item>
           <el-form-item label="快捷调整">
             <el-button-group>
               <el-button size="small" @click="adjustScore(-5)">-5</el-button>
@@ -165,6 +219,18 @@
             <el-button type="primary" :loading="grading" @click="submitGrade">保存</el-button>
           </div>
         </template>
+      </el-dialog>
+
+      <el-dialog v-model="aiReportDialogVisible" title="AI 初评报告" width="min(720px, 94vw)">
+        <div class="ai-report-dialog">
+          <div class="ai-grade-head">
+            <span class="ai-score strong">{{ aiReport?.ai_score ?? '无' }}分</span>
+            <el-tag :type="aiStatusType(aiReport?.ai_review_status)" effect="light">
+              {{ aiStatusLabel(aiReport?.ai_review_status) }}
+            </el-tag>
+          </div>
+          <pre class="ai-report-text">{{ aiReport?.ai_report_text || '暂无报告' }}</pre>
+        </div>
       </el-dialog>
     </div>
   </AppShell>
@@ -184,6 +250,10 @@ const loading = ref(false)
 const downloading = ref(null)
 const downloadingSingle = ref(null)
 const exporting = ref(false)
+const aiBatchLoading = ref(false)
+const aiGeneratingId = ref(null)
+const aiReportDialogVisible = ref(false)
+const aiReport = ref(null)
 const gradeDialogVisible = ref(false)
 const grading = ref(false)
 const currentStudent = ref(null)
@@ -253,10 +323,87 @@ function adjustScore(delta) {
   gradeForm.score = Math.max(0, Math.min(100, newScore))
 }
 
+function aiStatusLabel(status) {
+  const labels = {
+    none: '未生成',
+    queued: '排队中',
+    running: '生成中',
+    succeeded: '已生成',
+    failed: '失败'
+  }
+  return labels[status] || '未生成'
+}
+
+function aiStatusType(status) {
+  const types = {
+    queued: 'info',
+    running: 'warning',
+    succeeded: 'success',
+    failed: 'danger'
+  }
+  return types[status] || 'info'
+}
+
+function useAIScore() {
+  if (currentStudent.value?.ai_score === null || currentStudent.value?.ai_score === undefined) return
+  gradeForm.score = Number(currentStudent.value.ai_score)
+}
+
 function openGradeDialog(row) {
   currentStudent.value = row
   gradeForm.score = row.score || 85
   gradeDialogVisible.value = true
+}
+
+async function generateAIReview(row, force) {
+  aiGeneratingId.value = row.id
+  try {
+    const res = await api.post(`/admin/submissions/${row.id}/ai-review`, { force })
+    if (res.data.result) {
+      ElMessage.success(force ? 'AI 初评已重新生成' : 'AI 初评已生成')
+    } else if (res.data.job?.status === 'failed') {
+      ElMessage.error(res.data.job.error_message || 'AI 初评失败')
+    } else {
+      ElMessage.info('该版本已有 AI 初评')
+    }
+    await loadSubmissions()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || 'AI 初评生成失败')
+  } finally {
+    aiGeneratingId.value = null
+  }
+}
+
+async function batchGenerateAIReview() {
+  aiBatchLoading.value = true
+  try {
+    const res = await api.post(`/admin/assignments/${route.params.id}/ai-review-jobs`, {
+      scope: 'latest_unreviewed_per_student'
+    })
+    ElMessage.success(`批量完成：成功 ${res.data.succeeded}，失败 ${res.data.failed}，已有 ${res.data.reused}`)
+    await loadSubmissions()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '批量生成失败')
+  } finally {
+    aiBatchLoading.value = false
+  }
+}
+
+async function showAIReport(row) {
+  aiReport.value = row
+  aiReportDialogVisible.value = true
+  if (row.ai_report_text) return
+  try {
+    const res = await api.get(`/admin/submissions/${row.id}/ai-review`)
+    aiReport.value = {
+      ...row,
+      ai_report_text: res.data.result?.report_text,
+      ai_score: res.data.result?.ai_score,
+      ai_review_status: res.data.ai_review_status
+    }
+  } catch {
+    ElMessage.error('加载 AI 报告失败')
+  }
 }
 
 async function submitGrade() {
@@ -397,5 +544,48 @@ onMounted(loadSubmissions)
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+}
+
+.ai-status-cell,
+.ai-grade-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-score {
+  color: var(--brand);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ai-score.strong {
+  font-size: 1.05rem;
+}
+
+.ai-grade-reference,
+.ai-report-dialog {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.ai-report-preview,
+.ai-report-text {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 </style>

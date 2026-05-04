@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 class StudentBase(BaseModel):
     student_id: str
@@ -19,8 +19,7 @@ class AssignmentBase(BaseModel):
     deadline: datetime
     allow_late: bool = False
     file_rules: Optional[str] = None
-
-from typing import List
+    ai_grading_rubric: Optional[str] = None
 
 class AssignmentCreate(AssignmentBase):
     pass
@@ -64,6 +63,16 @@ class AssignmentOutWithFiles(AssignmentOut):
 class GradeSubmission(BaseModel):
     score: Optional[float] = None
 
+class AssignmentAISettings(BaseModel):
+    ai_grading_rubric: Optional[str] = None
+
+class AIReviewRequest(BaseModel):
+    force: bool = False
+
+class BatchAIReviewRequest(BaseModel):
+    scope: str = "latest_unreviewed_per_student"
+    selected_submission_ids: Optional[List[int]] = None
+
 class InteractionCreate(BaseModel):
     note: Optional[str] = None
 
@@ -74,4 +83,3 @@ class InteractionOut(BaseModel):
     note: Optional[str] = None
     class Config:
         from_attributes = True
-

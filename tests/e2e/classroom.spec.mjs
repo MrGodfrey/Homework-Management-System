@@ -57,6 +57,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
   const sandboxEditedDescription = "Created and updated by the browser regression suite.";
 
   const invalidUpload = testInfo.outputPath("invalid-upload.txt");
+  const compressedUpload = testInfo.outputPath("archive.zip");
   const essayMarkdown = testInfo.outputPath("essay-v2.md");
   const essayAppendix = testInfo.outputPath("appendix.pdf");
   const lateUpload = testInfo.outputPath("late-upload.txt");
@@ -65,6 +66,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
   const importCsv = testInfo.outputPath("students-import.csv");
 
   await fs.writeFile(invalidUpload, "plain text should be rejected\n");
+  await fs.writeFile(compressedUpload, "compressed uploads should be rejected\n");
   await fs.writeFile(essayMarkdown, "# Essay draft v2\n\nUpdated content.\n");
   await fs.writeFile(essayAppendix, "%PDF-1.4\nRegression appendix\n");
   await fs.writeFile(lateUpload, "late uploads should fail\n");
@@ -117,6 +119,10 @@ test("website regression covers the full classroom workflow", async ({ browser }
 
     await studentPage.reload();
     await expect(studentPage.getByText("essay-guide.txt")).toBeVisible();
+    const compressedUploadInput = studentPage.locator('[data-testid="student-assignment-upload"] input[type="file"]');
+    await compressedUploadInput.setInputFiles(compressedUpload);
+    await expect(studentPage.getByText(/不支持上传压缩包/)).toBeVisible();
+
     const validUploadInput = studentPage.locator('[data-testid="student-assignment-upload"] input[type="file"]');
     await validUploadInput.setInputFiles([essayMarkdown, essayAppendix]);
     await studentPage.getByRole("button", { name: "提交作业" }).click();
@@ -288,7 +294,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     await aliceGroupRow.click();
 
     const expandedVersionTable = adminPage.locator(".expand-content .el-table__row");
-    const latestVersionRow = expandedVersionTable.filter({ hasText: "v2" }).first();
+    let latestVersionRow = expandedVersionTable.filter({ hasText: "v2" }).first();
     await expect(latestVersionRow).toBeVisible();
 
     const singleDownloadPromise = adminPage.waitForEvent("download");
@@ -298,9 +304,34 @@ test("website regression covers the full classroom workflow", async ({ browser }
     expect(singleZipEntries).toContain("essay-v2.md");
     expect(singleZipEntries).toContain("appendix.pdf");
 
+    await latestVersionRow.getByRole("button", { name: "生成 AI 初评" }).click();
+    await expect(adminPage.getByText("AI 初评已生成")).toBeVisible();
+    const aliceGroupRowAfterAI = tableRowByText(adminPage, studentAccount.studentId);
+    latestVersionRow = adminPage.locator(".expand-content .el-table__row").filter({ hasText: "v2" }).first();
+    if (!(await latestVersionRow.isVisible().catch(() => false))) {
+      await aliceGroupRowAfterAI.click();
+    }
+    latestVersionRow = adminPage.locator(".expand-content .el-table__row").filter({ hasText: "v2" }).first();
+    await expect(latestVersionRow).toContainText("87分");
+    await latestVersionRow.getByRole("button", { name: "查看 AI 报告" }).click();
+    const aiReportDialog = adminPage.getByRole("dialog", { name: "AI 初评报告" });
+    await expect(aiReportDialog).toContainText("AI 建议分：87");
+    await adminPage.keyboard.press("Escape");
+
+    await adminPage.getByRole("button", { name: "批量生成 AI 初评" }).click();
+    await expect(adminPage.getByText(/批量完成：成功 1，失败 0/)).toBeVisible();
+    latestVersionRow = adminPage.locator(".expand-content .el-table__row").filter({ hasText: "v2" }).first();
+    if (!(await latestVersionRow.isVisible().catch(() => false))) {
+      await tableRowByText(adminPage, studentAccount.studentId).click();
+    }
+    latestVersionRow = adminPage.locator(".expand-content .el-table__row").filter({ hasText: "v2" }).first();
+
     await latestVersionRow.getByRole("button", { name: "评分" }).click();
     const gradeDialog = adminPage.getByRole("dialog", { name: "评分" });
+    await expect(gradeDialog).toContainText("AI 建议");
+    await gradeDialog.getByRole("button", { name: "使用 AI 分数" }).click();
     const scoreInput = gradeDialog.getByRole("spinbutton");
+    await expect(scoreInput).toHaveValue("87");
     await scoreInput.fill("92");
     await gradeDialog.getByRole("button", { name: "保存" }).click();
     await expect(adminPage.getByText("评分成功")).toBeVisible();
@@ -366,6 +397,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     await studentPage.goto("/assignments");
     const essayRow = tableRowByText(studentPage, "Essay Draft");
     await expect(essayRow).toContainText("92");
+    await expect(studentPage.getByText(/AI|初评|建议分/)).toHaveCount(0);
     await studentPage.getByRole("button", { name: /退出登录/ }).click();
     await expect(studentPage).toHaveURL(/\/login$/);
 

@@ -20,8 +20,45 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Student, Assignment, Submission, SubmissionFile, AuditLog, Instructor, AssignmentFile, Interaction, beijing_now
-from app.schemas import StudentOut, StudentCreate, StudentUpdate, AssignmentCreate, AssignmentUpdate, AssignmentOut, GradeSubmission, AssignmentOutWithFiles, AssignmentFileOut, InteractionCreate, InteractionOut
+from app.models import (
+    AIGradingJob,
+    AIGradingResult,
+    Student,
+    Assignment,
+    Submission,
+    SubmissionFile,
+    AuditLog,
+    Instructor,
+    AssignmentFile,
+    Interaction,
+    beijing_now,
+)
+from app.schemas import (
+    AIReviewRequest,
+    AssignmentAISettings,
+    BatchAIReviewRequest,
+    StudentOut,
+    StudentCreate,
+    StudentUpdate,
+    AssignmentCreate,
+    AssignmentUpdate,
+    AssignmentOut,
+    GradeSubmission,
+    AssignmentOutWithFiles,
+    AssignmentFileOut,
+    InteractionCreate,
+    InteractionOut,
+)
+from app.services.ai_grading import (
+    generate_ai_review,
+    latest_job_for_submission,
+    latest_result_for_submission,
+    run_batch_ai_review,
+    serialize_job,
+    serialize_result,
+    summarize_submission_ai_state,
+)
+from app.services.submission_extractor import sanitize_file_rules
 from app.dependencies import get_current_instructor
 from app.auth import hash_password
 from app.cos_utils import (
@@ -520,6 +557,10 @@ def delete_student(student_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="学生不存在")
     # 删除关联的提交记录及文件
     submissions = db.query(Submission).filter(Submission.student_id == student_id).all()
+    submission_ids = [sub.id for sub in submissions]
+    if submission_ids:
+        db.query(AIGradingResult).filter(AIGradingResult.submission_id.in_(submission_ids)).delete(synchronize_session=False)
+        db.query(AIGradingJob).filter(AIGradingJob.submission_id.in_(submission_ids)).delete(synchronize_session=False)
     for sub in submissions:
         db.query(SubmissionFile).filter(SubmissionFile.submission_id == sub.id).delete()
     db.query(Submission).filter(Submission.student_id == student_id).delete()
@@ -552,6 +593,7 @@ def get_assignments(db: Session = Depends(get_db)):
             "deadline": assignment.deadline,
             "allow_late": assignment.allow_late,
             "file_rules": assignment.file_rules,
+            "ai_grading_rubric": assignment.ai_grading_rubric,
             "created_at": assignment.created_at,
             "submitted_count": submitted_count,
             "graded_count": graded_count
@@ -562,7 +604,9 @@ def get_assignments(db: Session = Depends(get_db)):
 
 @router.post("/assignments", response_model=AssignmentOut)
 def create_assignment(assignment: AssignmentCreate, db: Session = Depends(get_db)):
-    new_assignment = Assignment(**assignment.dict())
+    payload = assignment.dict()
+    payload["file_rules"] = sanitize_file_rules(payload.get("file_rules"))
+    new_assignment = Assignment(**payload)
     db.add(new_assignment)
     db.commit()
     db.refresh(new_assignment)
@@ -574,12 +618,42 @@ def update_assignment(assignment_id: int, assignment: AssignmentUpdate, db: Sess
     if not db_assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
         
-    for key, value in assignment.dict(exclude_unset=True).items():
+    payload = assignment.dict(exclude_unset=True)
+    if "file_rules" in payload:
+        payload["file_rules"] = sanitize_file_rules(payload.get("file_rules"))
+    for key, value in payload.items():
         setattr(db_assignment, key, value)
         
     db.commit()
     db.refresh(db_assignment)
     return db_assignment
+
+@router.get("/assignments/{assignment_id}/ai-settings")
+def get_assignment_ai_settings(assignment_id: int, db: Session = Depends(get_db)):
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return {
+        "assignment_id": assignment.id,
+        "ai_grading_rubric": assignment.ai_grading_rubric,
+    }
+
+@router.put("/assignments/{assignment_id}/ai-settings")
+def update_assignment_ai_settings(
+    assignment_id: int,
+    data: AssignmentAISettings,
+    db: Session = Depends(get_db),
+):
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    assignment.ai_grading_rubric = data.ai_grading_rubric
+    db.commit()
+    db.refresh(assignment)
+    return {
+        "assignment_id": assignment.id,
+        "ai_grading_rubric": assignment.ai_grading_rubric,
+    }
 
 @router.post("/assignments/{assignment_id}/upload-attachment")
 async def upload_assignment_attachment(
@@ -697,6 +771,7 @@ def get_assignment_with_files(assignment_id: int, db: Session = Depends(get_db))
         "deadline": assignment.deadline,
         "allow_late": assignment.allow_late,
         "file_rules": assignment.file_rules,
+        "ai_grading_rubric": assignment.ai_grading_rubric,
         "created_at": assignment.created_at,
         "submitted_count": submitted_count,
         "graded_count": graded_count,
@@ -741,6 +816,10 @@ def delete_assignment(assignment_id: int, force: bool = False, db: Session = Dep
     submissions = db.query(Submission).filter(
         Submission.assignment_id == assignment_id
     ).all()
+    submission_ids = [submission.id for submission in submissions]
+    if submission_ids:
+        db.query(AIGradingResult).filter(AIGradingResult.submission_id.in_(submission_ids)).delete(synchronize_session=False)
+        db.query(AIGradingJob).filter(AIGradingJob.submission_id.in_(submission_ids)).delete(synchronize_session=False)
     
     # 收集所有需要从COS删除的文件key
     cos_keys_to_delete = []
@@ -843,6 +922,7 @@ def get_submissions(assignment_id: int, db: Session = Depends(get_db)):
     subs = db.query(Submission).filter(Submission.assignment_id == assignment_id).all()
     res = []
     for sub in subs:
+        ai_state = summarize_submission_ai_state(db, sub.id)
         res.append({
             "id": sub.id,
             "student_id": sub.student.student_id,
@@ -850,9 +930,60 @@ def get_submissions(assignment_id: int, db: Session = Depends(get_db)):
             "version": sub.version_no,
             "time": sub.submitted_at,
             "score": sub.score,
-            "is_graded": sub.is_graded
+            "is_graded": sub.is_graded,
+            **ai_state,
         })
     return res
+
+@router.post("/submissions/{submission_id}/ai-review")
+def create_submission_ai_review(
+    submission_id: int,
+    request: AIReviewRequest,
+    db: Session = Depends(get_db),
+    current_instructor: Instructor = Depends(get_current_instructor),
+):
+    return generate_ai_review(
+        db=db,
+        submission_id=submission_id,
+        instructor_id=current_instructor.id,
+        file_reader=read_file_from_storage,
+        force=request.force,
+        trigger_type="single",
+    )
+
+@router.get("/submissions/{submission_id}/ai-review")
+def get_submission_ai_review(submission_id: int, db: Session = Depends(get_db)):
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return {
+        "job": serialize_job(latest_job_for_submission(db, submission_id)),
+        "result": serialize_result(latest_result_for_submission(db, submission_id)),
+        **summarize_submission_ai_state(db, submission_id),
+    }
+
+@router.post("/assignments/{assignment_id}/ai-review-jobs")
+def create_assignment_ai_review_jobs(
+    assignment_id: int,
+    request: BatchAIReviewRequest,
+    db: Session = Depends(get_db),
+    current_instructor: Instructor = Depends(get_current_instructor),
+):
+    return run_batch_ai_review(
+        db=db,
+        assignment_id=assignment_id,
+        instructor_id=current_instructor.id,
+        file_reader=read_file_from_storage,
+        scope=request.scope,
+        selected_submission_ids=request.selected_submission_ids,
+    )
+
+@router.get("/ai-review-jobs/{job_id}")
+def get_ai_review_job(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(AIGradingJob).filter(AIGradingJob.job_id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="AI review job not found")
+    return serialize_job(job)
 
 @router.get("/assignments/{assignment_id}/submissions/{student_no}/download")
 def download_single_student_submission(

@@ -15,7 +15,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.database import Base
 from app.config import settings
 # Import all models to ensure they are registered with Base.metadata
-from app.models import Instructor, Student, Assignment, Submission, SubmissionFile, AuditLog, Interaction
+from app.models import (
+    AIGradingJob,
+    AIGradingResult,
+    Assignment,
+    AssignmentFile,
+    AuditLog,
+    Instructor,
+    Interaction,
+    Student,
+    Submission,
+    SubmissionFile,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

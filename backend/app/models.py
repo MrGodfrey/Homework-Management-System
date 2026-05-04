@@ -32,9 +32,12 @@ class Assignment(Base):
     deadline = Column(DateTime, nullable=False)
     allow_late = Column(Boolean, default=False)
     file_rules = Column(String, nullable=True) # e.g., allowed extensions
+    ai_grading_rubric = Column(Text, nullable=True)
     created_at = Column(DateTime, default=beijing_now)
     submissions = relationship("Submission", back_populates="assignment")
     attachment_files = relationship("AssignmentFile", back_populates="assignment", cascade="all, delete-orphan")
+    ai_grading_jobs = relationship("AIGradingJob", back_populates="assignment", cascade="all, delete-orphan")
+    ai_grading_results = relationship("AIGradingResult", back_populates="assignment", cascade="all, delete-orphan")
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -48,6 +51,8 @@ class Submission(Base):
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")
     files = relationship("SubmissionFile", back_populates="submission")
+    ai_grading_jobs = relationship("AIGradingJob", back_populates="submission", cascade="all, delete-orphan")
+    ai_grading_results = relationship("AIGradingResult", back_populates="submission", cascade="all, delete-orphan")
 
 class SubmissionFile(Base):
     __tablename__ = "submission_files"
@@ -82,3 +87,46 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     details = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=beijing_now)
+
+class AIGradingJob(Base):
+    __tablename__ = "ai_grading_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String, unique=True, index=True, nullable=False)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    provider = Column(String, nullable=False, default="tencent_maas_tokenhub")
+    model = Column(String, nullable=False, default="deepseek-v4-flash")
+    trigger_type = Column(String, nullable=False, default="single")
+    triggered_by_instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=beijing_now)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    assignment = relationship("Assignment", back_populates="ai_grading_jobs")
+    submission = relationship("Submission", back_populates="ai_grading_jobs")
+
+class AIGradingResult(Base):
+    __tablename__ = "ai_grading_results"
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False, index=True)
+    job_id = Column(String, nullable=False, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    model = Column(String, nullable=False)
+    rubric_snapshot = Column(Text, nullable=True)
+    file_manifest_json = Column(Text, nullable=True)
+    extracted_summary = Column(Text, nullable=True)
+    ai_score = Column(Float, nullable=True)
+    confidence = Column(String, nullable=True)
+    report_json = Column(Text, nullable=True)
+    report_text = Column(Text, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=beijing_now)
+    is_latest = Column(Boolean, default=True, nullable=False)
+
+    assignment = relationship("Assignment", back_populates="ai_grading_results")
+    submission = relationship("Submission", back_populates="ai_grading_results")

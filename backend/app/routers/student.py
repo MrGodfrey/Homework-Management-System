@@ -13,6 +13,7 @@ from app.schemas import AssignmentBase, StudentMeOut, InteractionOut
 from app.cos_utils import upload_file_to_cos, generate_presigned_url
 from app.config import settings
 from app.upload_limits import format_file_size
+from app.services.submission_extractor import is_compressed_filename
 
 router = APIRouter(
     prefix="/api/assignments",
@@ -166,6 +167,10 @@ async def submit_assignment(
         raise HTTPException(status_code=400, detail="Deadline has passed, late submission is not allowed")
         
     # Check file rules (assuming comma-separated extensions like '.doc,.pdf')
+    for f in files:
+        if is_compressed_filename(f.filename):
+            raise HTTPException(status_code=400, detail=f"不允许上传压缩包文件：{f.filename}")
+
     if assign.file_rules:
         allowed_exts = [ext.strip().lower() for ext in assign.file_rules.split(',')]
         for f in files:

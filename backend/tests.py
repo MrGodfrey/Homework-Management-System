@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import zipfile
@@ -17,9 +18,10 @@ from app.auth import hash_password
 from app.database import Base, get_db
 from app.dependencies import get_current_instructor, get_current_student
 from app.main import app
-from app.models import Assignment, Instructor, Student, Submission, SubmissionFile, beijing_now
+from app.models import AIGradingJob, AIGradingResult, Assignment, Instructor, Student, Submission, SubmissionFile, beijing_now
 from app.routers import admin as admin_router
 from app.routers import student as student_router
+from app.services import llm_client
 
 
 @pytest.fixture()
@@ -89,6 +91,7 @@ def classroom_client(monkeypatch):
 
     monkeypatch.setattr(admin_router, "read_file_from_storage", read_file_from_storage)
     monkeypatch.setattr(student_router, "upload_file_to_cos", upload_file_to_storage)
+    monkeypatch.setattr(student_router, "generate_presigned_url", lambda cos_key, expires=3600: f"local://{cos_key}")
 
     with TestClient(app) as client:
         yield client, TestingSessionLocal, storage
@@ -163,7 +166,7 @@ def test_student_upload_rejects_oversized_submission_with_specific_message(class
     client, SessionLocal, _storage = classroom_client
     db = SessionLocal()
     try:
-        assignment = create_assignment(db, file_rules=".zip")
+        assignment = create_assignment(db, file_rules=".txt")
         assignment_id = assignment.id
     finally:
         db.close()
@@ -172,12 +175,398 @@ def test_student_upload_rejects_oversized_submission_with_specific_message(class
 
     response = client.post(
         f"/api/assignments/{assignment_id}/submit",
-        files=[("files", ("lab1.zip", b"01234567890", "application/zip"))],
+        files=[("files", ("lab1.txt", b"01234567890", "text/plain"))],
     )
 
     assert response.status_code == 400
     assert "超过 10B 上限" in response.json()["detail"]
     assert "请压缩或分拆后重新上传" in response.json()["detail"]
+
+
+def test_student_upload_rejects_compressed_archives_without_ai_side_effects(classroom_client):
+    client, SessionLocal, _storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".zip,.md")
+        assignment_id = assignment.id
+    finally:
+        db.close()
+
+    response = client.post(
+        f"/api/assignments/{assignment_id}/submit",
+        files=[("files", ("archive.zip", b"zip bytes", "application/zip"))],
+    )
+
+    assert response.status_code == 400
+    assert "不允许上传压缩包文件" in response.json()["detail"]
+
+    db = SessionLocal()
+    try:
+        assert db.query(Submission).filter(Submission.assignment_id == assignment_id).count() == 0
+        assert db.query(AIGradingJob).count() == 0
+    finally:
+        db.close()
+
+
+def test_student_can_upload_notebook_without_ai_side_effects(classroom_client):
+    client, SessionLocal, _storage = classroom_client
+    notebook = {
+        "cells": [
+            {"cell_type": "markdown", "source": ["# Report\n"]},
+            {"cell_type": "code", "source": ["print('ok')\n"], "outputs": []},
+        ]
+    }
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".ipynb")
+        assignment_id = assignment.id
+    finally:
+        db.close()
+
+    response = client.post(
+        f"/api/assignments/{assignment_id}/submit",
+        files=[("files", ("analysis.ipynb", json.dumps(notebook).encode("utf-8"), "application/x-ipynb+json"))],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["version_no"] == 1
+    db = SessionLocal()
+    try:
+        submission = db.query(Submission).filter(Submission.assignment_id == assignment_id).one()
+        assert submission.files[0].filename == "analysis.ipynb"
+        assert db.query(AIGradingJob).count() == 0
+    finally:
+        db.close()
+
+
+def test_admin_ai_settings_are_admin_only_and_student_payloads_hide_them(classroom_client):
+    client, SessionLocal, _storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        assignment_id = assignment.id
+    finally:
+        db.close()
+
+    update_response = client.put(
+        f"/api/admin/assignments/{assignment_id}/ai-settings",
+        json={"ai_grading_rubric": "按 README 完整度和分析质量给出建议分。"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["ai_grading_rubric"] == "按 README 完整度和分析质量给出建议分。"
+
+    admin_list_response = client.get("/api/admin/assignments")
+    assert admin_list_response.status_code == 200
+    admin_assignment = next(item for item in admin_list_response.json() if item["id"] == assignment_id)
+    assert admin_assignment["ai_grading_rubric"] == "按 README 完整度和分析质量给出建议分。"
+
+    student_detail_response = client.get(f"/api/assignments/{assignment_id}")
+    assert student_detail_response.status_code == 200
+    assert "ai_grading_rubric" not in student_detail_response.json()
+
+    student_list_response = client.get("/api/assignments")
+    assert student_list_response.status_code == 200
+    assert "ai_grading" not in json.dumps(student_list_response.json(), ensure_ascii=False)
+
+
+def test_student_submission_does_not_create_ai_job_or_call_model(classroom_client, monkeypatch):
+    client, SessionLocal, _storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        assignment_id = assignment.id
+    finally:
+        db.close()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("student submission must not call the model")
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fail_if_called)
+    response = client.post(
+        f"/api/assignments/{assignment_id}/submit",
+        files=[("files", ("answer.md", b"# Answer\n", "text/markdown"))],
+    )
+
+    assert response.status_code == 200
+    db = SessionLocal()
+    try:
+        assert db.query(AIGradingJob).count() == 0
+        assert db.query(AIGradingResult).count() == 0
+    finally:
+        db.close()
+
+
+def test_ai_review_binds_to_submission_version_and_does_not_write_final_score(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        assignment.ai_grading_rubric = "建议分 0-100，只做教师参考。"
+        db.commit()
+        v1 = create_submission(db, storage, assignment, "20230001", 1, "answer-v1.md", b"# V1\n")
+        v2 = create_submission(db, storage, assignment, "20230001", 2, "answer-v2.md", b"# V2\n")
+        v1_id = v1.id
+        v2_id = v2.id
+        assignment_id = assignment.id
+    finally:
+        db.close()
+
+    def fake_completion(**_kwargs):
+        return {
+            "content": json.dumps({
+                "score": 91,
+                "confidence": "medium",
+                "summary": "版本绑定测试。",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "不会自动保存最终分。",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+        }
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+
+    v1_response = client.post(f"/api/admin/submissions/{v1_id}/ai-review", json={"force": False})
+    v2_response = client.post(f"/api/admin/submissions/{v2_id}/ai-review", json={"force": False})
+
+    assert v1_response.status_code == 200
+    assert v2_response.status_code == 200
+    assert v1_response.json()["result"]["submission_id"] == v1_id
+    assert v1_response.json()["result"]["version_no"] == 1
+    assert v2_response.json()["result"]["submission_id"] == v2_id
+    assert v2_response.json()["result"]["version_no"] == 2
+
+    db = SessionLocal()
+    try:
+        sub_v1 = db.query(Submission).filter(Submission.id == v1_id).one()
+        sub_v2 = db.query(Submission).filter(Submission.id == v2_id).one()
+        assert sub_v1.score is None
+        assert sub_v1.is_graded is False
+        assert sub_v2.score is None
+        assert sub_v2.is_graded is False
+    finally:
+        db.close()
+
+    submissions_response = client.get(f"/api/admin/assignments/{assignment_id}/submissions")
+    assert submissions_response.status_code == 200
+    by_id = {item["id"]: item for item in submissions_response.json()}
+    assert by_id[v1_id]["ai_review_status"] == "succeeded"
+    assert by_id[v2_id]["ai_score"] == 91
+
+    student_list_response = client.get("/api/assignments")
+    student_history_response = client.get(f"/api/assignments/{assignment_id}/submissions")
+    assert "ai_review" not in json.dumps(student_list_response.json(), ensure_ascii=False)
+    assert "ai_score" not in json.dumps(student_history_response.json(), ensure_ascii=False)
+
+
+def test_ai_review_force_regenerates_latest_without_overwriting_history(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        submission = create_submission(db, storage, assignment, "20230001", 1, "answer.md", b"# Answer\n")
+        submission_id = submission.id
+    finally:
+        db.close()
+
+    scores = iter([80, 88])
+
+    def fake_completion(**_kwargs):
+        score = next(scores)
+        return {
+            "content": json.dumps({
+                "score": score,
+                "confidence": "medium",
+                "summary": "重新生成测试。",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "latest should move.",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+        }
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+
+    first_response = client.post(f"/api/admin/submissions/{submission_id}/ai-review", json={"force": False})
+    second_response = client.post(f"/api/admin/submissions/{submission_id}/ai-review", json={"force": True})
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["result"]["ai_score"] == 80
+    assert second_response.json()["result"]["ai_score"] == 88
+
+    db = SessionLocal()
+    try:
+        results = db.query(AIGradingResult).filter(AIGradingResult.submission_id == submission_id).order_by(AIGradingResult.id).all()
+        assert len(results) == 2
+        assert results[0].is_latest is False
+        assert results[1].is_latest is True
+    finally:
+        db.close()
+
+
+def test_batch_ai_review_processes_latest_unreviewed_versions_only(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        alice_v1 = create_submission(db, storage, assignment, "20230001", 1, "alice-v1.md", b"# Alice v1\n")
+        alice_v2 = create_submission(db, storage, assignment, "20230001", 2, "alice-v2.md", b"# Alice v2\n")
+        bob_v1 = create_submission(db, storage, assignment, "20230002", 1, "bob-v1.md", b"# Bob v1\n")
+        assignment_id = assignment.id
+        alice_v1_id = alice_v1.id
+        alice_v2_id = alice_v2.id
+        bob_v1_id = bob_v1.id
+    finally:
+        db.close()
+
+    def fake_completion(**_kwargs):
+        return {
+            "content": json.dumps({
+                "score": 77,
+                "confidence": "medium",
+                "summary": "批量生成测试。",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "manual batch only.",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+        }
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+    response = client.post(
+        f"/api/admin/assignments/{assignment_id}/ai-review-jobs",
+        json={"scope": "latest_unreviewed_per_student"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert payload["succeeded"] == 2
+    processed_submission_ids = {item["submission_id"] for item in payload["items"]}
+    assert processed_submission_ids == {alice_v2_id, bob_v1_id}
+    assert alice_v1_id not in processed_submission_ids
+
+    db = SessionLocal()
+    try:
+        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v1_id).count() == 0
+        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v2_id).one().version_no == 2
+        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == bob_v1_id).one().version_no == 1
+    finally:
+        db.close()
+
+
+def test_ai_review_skips_historical_archives_and_fails_without_text(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".zip")
+        submission = create_submission(db, storage, assignment, "20230001", 1, "archive.zip", b"ZIP_SECRET")
+        submission_id = submission.id
+    finally:
+        db.close()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("zip-only AI review must not call the model")
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fail_if_called)
+    response = client.post(f"/api/admin/submissions/{submission_id}/ai-review", json={"force": False})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job"]["status"] == "failed"
+    assert "无可评阅文本文件" in payload["job"]["error_message"]
+    assert payload["result"] is None
+
+    db = SessionLocal()
+    try:
+        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == submission_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_ai_review_notebook_extraction_ignores_outputs_attachments_and_base64(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".ipynb")
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "source": ["# Visible Markdown\n"],
+                    "attachments": {
+                        "image.png": {"image/png": "ATTACHMENT_SECRET_BASE64"}
+                    },
+                },
+                {
+                    "cell_type": "code",
+                    "source": ["print('visible code')\n"],
+                    "outputs": [
+                        {"output_type": "stream", "text": "OUTPUT_SECRET"},
+                        {"output_type": "display_data", "data": {"image/png": "IMAGE_SECRET_BASE64"}},
+                    ],
+                },
+            ]
+        }
+        submission = create_submission(
+            db,
+            storage,
+            assignment,
+            "20230001",
+            1,
+            "analysis.ipynb",
+            json.dumps(notebook).encode("utf-8"),
+        )
+        submission_id = submission.id
+    finally:
+        db.close()
+
+    captured = {}
+
+    def fake_completion(**kwargs):
+        captured["prompt"] = "\n".join(item["content"] for item in kwargs["messages"])
+        return {
+            "content": json.dumps({
+                "score": 84,
+                "confidence": "medium",
+                "summary": "Notebook extraction test.",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "outputs ignored.",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+        }
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+    response = client.post(f"/api/admin/submissions/{submission_id}/ai-review", json={"force": False})
+
+    assert response.status_code == 200
+    prompt = captured["prompt"]
+    assert "Visible Markdown" in prompt
+    assert "visible code" in prompt
+    assert "OUTPUT_SECRET" not in prompt
+    assert "ATTACHMENT_SECRET_BASE64" not in prompt
+    assert "IMAGE_SECRET_BASE64" not in prompt
+
+    result = response.json()["result"]
+    manifest = result["file_manifest"][0]
+    assert manifest["type"] == "notebook"
+    assert manifest["outputs_ignored"] == 2
+    assert manifest["image_outputs_ignored"] == 1
+    assert manifest["attachments_ignored"] == 1
 
 
 def test_assignment_download_modes_include_all_submitted_students(classroom_client):

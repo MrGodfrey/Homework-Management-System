@@ -181,14 +181,21 @@
               <el-checkbox label=".txt">文本</el-checkbox>
               <el-checkbox label=".ipynb">Jupyter</el-checkbox>
               <el-checkbox label=".py">Python</el-checkbox>
-              <el-checkbox label=".zip">压缩包</el-checkbox>
             </el-checkbox-group>
             <el-input v-model="form.file_rules" placeholder="或手动输入，逗号分隔" style="margin-top: 10px" />
+          </el-form-item>
+          <el-form-item label="AI 评分参考">
+            <el-input
+              v-model="form.ai_grading_rubric"
+              type="textarea"
+              :rows="5"
+              placeholder="仅教师端可见，用于 AI 初评的评分参考"
+            />
           </el-form-item>
           <el-alert
             class="upload-limit-alert"
             :title="`学生每次提交文件总大小上限：${uploadLimit.label}`"
-            description="压缩包也计入总大小。布置作业时请提醒学生，超过上限需要重新压缩或分拆后再提交。"
+            description="学生端禁止上传压缩包；如文件超过上限，请分拆后再提交。"
             type="warning"
             :closable="false"
             show-icon
@@ -269,8 +276,8 @@ const saving = ref(false)
 const deleting = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
-const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '' })
-const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip'])
+const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '', ai_grading_rubric: '' })
+const selectedFormats = ref(['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py'])
 const attachmentFiles = ref([])
 const uploadingAttachment = ref(false)
 const EXPORT_POLL_INTERVAL_MS = 600
@@ -337,9 +344,10 @@ function openCreate() {
     description: '',
     deadline: null,
     allow_late: false,
-    file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py,.zip'
+    file_rules: '.pdf,.docx,.md,.txt,.ipynb,.py',
+    ai_grading_rubric: ''
   })
-  selectedFormats.value = ['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py', '.zip']
+  selectedFormats.value = ['.pdf', '.docx', '.md', '.txt', '.ipynb', '.py']
   dialogVisible.value = true
 }
 
@@ -350,9 +358,10 @@ async function openEdit(row) {
     description: row.description || '',
     deadline: row.deadline ? new Date(row.deadline) : null,
     allow_late: row.allow_late,
-    file_rules: row.file_rules || ''
+    file_rules: sanitizeFileRules(row.file_rules || ''),
+    ai_grading_rubric: row.ai_grading_rubric || ''
   })
-  selectedFormats.value = row.file_rules ? row.file_rules.split(',').map((s) => s.trim()) : []
+  selectedFormats.value = row.file_rules ? sanitizeFileRules(row.file_rules).split(',').filter(Boolean) : []
   await loadAttachments(row.id)
   dialogVisible.value = true
 }
@@ -432,7 +441,8 @@ async function saveAssignment() {
       description: form.description,
       deadline: form.deadline instanceof Date ? form.deadline.toISOString() : form.deadline,
       allow_late: form.allow_late,
-      file_rules: form.file_rules
+      file_rules: sanitizeFileRules(form.file_rules),
+      ai_grading_rubric: form.ai_grading_rubric
     }
     if (editingId.value) {
       await api.put(`/admin/assignments/${editingId.value}`, payload)
@@ -448,6 +458,15 @@ async function saveAssignment() {
   } finally {
     saving.value = false
   }
+}
+
+function sanitizeFileRules(value) {
+  const compressed = new Set(['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.tgz', '.tar.gz'])
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item && !compressed.has(item))
+    .join(',')
 }
 
 async function exportAllGradesCSV() {

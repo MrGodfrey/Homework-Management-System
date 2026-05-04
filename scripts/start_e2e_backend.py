@@ -26,6 +26,7 @@ def build_env() -> dict[str, str]:
             "COS_SECRET_KEY": "dummy",
             "COS_REGION": "ap-guangzhou",
             "COS_BUCKET": "classroom-e2e",
+            "AI_GRADING_FAKE_RESPONSE": "1",
             "PYTHONPATH": str(BACKEND),
         }
     )

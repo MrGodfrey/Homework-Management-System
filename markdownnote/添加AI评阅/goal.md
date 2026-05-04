@@ -8,22 +8,29 @@
 
 ## checklist.md
 
-- [ ] 完成数据库变更前安全确认：当前 DB 引擎和路径、备份位置、恢复命令、migration 路径、rollback 路径。
-- [ ] 新增 AI 评分参考配置，且该配置仅 admin 接口可读写，学生端接口不返回。
-- [ ] 新增 AI 评阅任务和结果存储，AI 结果绑定 `submission_id` 和 `version_no`，不写入 `Submission.score`。
-- [ ] 接入 TokenHub Chat Completions，默认模型为 `deepseek-v4-flash`，key 只从 `.env` 或服务环境读取。
-- [ ] 所有 AI 调用只允许教师端手动触发，包括单个版本、批量生成和重新生成。
-- [ ] 学生提交接口不创建 AI 任务、不入队、不调用 TokenHub、不通过后台扫描补触发。
-- [ ] `.ipynb` 解析只保留 markdown cell source 和 code cell source，不执行代码，不读取 outputs、attachments、图片或 base64。
-- [ ] 上传阶段禁止压缩包；历史压缩包在 AI 评阅阶段直接跳过，不解压、不送模型。
-- [ ] 教师端可保存 AI 评分参考，可查看 AI 状态、建议分和报告，可将 AI 分数填入最终分数输入框但不自动保存。
-- [ ] 学生端只显示教师最终分数，不显示 AI 状态、AI 报告、AI 建议分。
-- [ ] 增加调用限制、字符/token 限制、失败状态、错误信息和必要日志脱敏。
-- [ ] 增加后端测试，覆盖版本绑定、手动触发、学生端不可见、压缩包跳过、notebook 提取和最终分不被 AI 覆盖。
-- [ ] 增加或更新前端/E2E 测试，覆盖教师端 AI 操作和学生端不可见性。
-- [ ] 本地测试全部通过。
-- [ ] 在线部署和线上烟测全部通过。
+- [x] 完成数据库变更前安全确认：当前 DB 引擎和路径、备份位置、恢复命令、migration 路径、rollback 路径。
+- [x] 新增 AI 评分参考配置，且该配置仅 admin 接口可读写，学生端接口不返回。
+- [x] 新增 AI 评阅任务和结果存储，AI 结果绑定 `submission_id` 和 `version_no`，不写入 `Submission.score`。
+- [x] 接入 TokenHub Chat Completions，默认模型为 `deepseek-v4-flash`，key 只从 `.env` 或服务环境读取。
+- [x] 所有 AI 调用只允许教师端手动触发，包括单个版本、批量生成和重新生成。
+- [x] 学生提交接口不创建 AI 任务、不入队、不调用 TokenHub、不通过后台扫描补触发。
+- [x] `.ipynb` 解析只保留 markdown cell source 和 code cell source，不执行代码，不读取 outputs、attachments、图片或 base64。
+- [x] 上传阶段禁止压缩包；历史压缩包在 AI 评阅阶段直接跳过，不解压、不送模型。
+- [x] 教师端可保存 AI 评分参考，可查看 AI 状态、建议分和报告，可将 AI 分数填入最终分数输入框但不自动保存。
+- [x] 学生端只显示教师最终分数，不显示 AI 状态、AI 报告、AI 建议分。
+- [x] 增加调用限制、字符/token 限制、失败状态、错误信息和必要日志脱敏。
+- [x] 增加后端测试，覆盖版本绑定、手动触发、学生端不可见、压缩包跳过、notebook 提取和最终分不被 AI 覆盖。
+- [x] 增加或更新前端/E2E 测试，覆盖教师端 AI 操作和学生端不可见性。
+- [x] 本地测试全部通过。
+- [x] 在线部署和线上烟测全部通过。
 
+## 执行记录
+
+- 生产安全确认：`./deploy.sh` 远端预检输出 `DATABASE_URL=sqlite:///./classroom.db`，实际 DB 文件 `/home/ubuntu/classroom/backend/classroom.db`，备份 `/home/ubuntu/classroom/backend/backups/classroom_backup_20260504_212513.db`，恢复命令 `cd /home/ubuntu/classroom/backend && cp backups/classroom_backup_20260504_212513.db ./classroom.db`，迁移命令 `alembic upgrade head`，回滚命令 `alembic downgrade -1`。
+- 生产部署：`./deploy.sh` 已按 `backup DB -> verify backup exists -> sync code -> install deps -> migrate -> restart -> smoke test` 执行，Alembic 从 `6c9664356acb` 升级到 `91c7b6879b9c (head)`，脚本内置远端 smoke test 通过。
+- 本地测试：`npm run setup:test-env`、`npm run test:backend`、`npm --prefix frontend run build`、`npm run test:web` 均通过；`ENV=DEV python start_local_test.py` 已验证可启动本地预览。
+- 生产配置补充：线上首次 AI smoke 发现 `TENCENT_MODEL_KEY_SECRET` 未配置到后端运行环境；已将本地 `.env` 中的 AI 模型相关键同步到生产 `/home/ubuntu/classroom/backend/.env`，并先备份为 `/home/ubuntu/classroom/backend/.env.backup_ai_20260504_213305`，随后重启 `classroom-backend` 确认 active。
+- 应用级线上烟测：`scripts/smoke_ai_online.py --confirm-production-write` 已通过，覆盖线上学生 Markdown/Notebook 提交、压缩包拒绝、学生提交后不自动生成 AI、教师保存 AI 评分参考、单个版本 AI 初评、批量 AI 初评、Notebook outputs/images/attachments 忽略、教师保存最终分、学生端不展示 AI 字段且只展示最终分。临时 smoke 作业和学生已清理，复查剩余 smoke 记录为 0。
 ## 完成判断标准
 
 Goal 只有在以下条件全部满足时才算完成：
