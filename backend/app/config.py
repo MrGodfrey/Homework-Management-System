@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     AI_GRADING_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_DAILY_LIMIT", "200"))
     AI_GRADING_ASSIGNMENT_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_ASSIGNMENT_DAILY_LIMIT", "100"))
     AI_GRADING_FAKE_RESPONSE: bool = False
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_DIR: str = os.getenv("LOG_DIR", str(BACKEND_DIR / "logs"))
+    LOG_TO_FILE: bool = True
+    LOG_MAX_BYTES: int = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
+    LOG_BACKUP_COUNT: int = int(os.getenv("LOG_BACKUP_COUNT", "7"))
 
     @field_validator("AI_GRADING_FAKE_RESPONSE", mode="before")
     @classmethod

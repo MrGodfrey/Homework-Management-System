@@ -31,6 +31,13 @@ COS_BUCKET=<set-in-local-env>
 SECRET_KEY=<set-in-local-env>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# 运行日志（可选；默认写入 backend/logs/classroom.log）
+# LOG_LEVEL=INFO
+# LOG_TO_FILE=1
+# LOG_DIR=/absolute/path/to/classroom/backend/logs
+# LOG_MAX_BYTES=10485760
+# LOG_BACKUP_COUNT=7
 ```
 
 ### 3. 初始化数据库
@@ -53,6 +60,15 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+### 5. 查看运行日志
+
+应用默认把请求、异常和关键业务事件写入 `backend/logs/classroom.log`，并按大小轮转。日志不会记录请求体、密码或 Token。
+
+```bash
+tail -f logs/classroom.log
+rg '"level": "ERROR"|"message": "request_failed"' logs
+```
+
 ## 项目结构
 
 ```
@@ -69,7 +85,9 @@ backend/
 │   ├── cos_utils.py      # COS 存储工具
 │   ├── database.py       # 数据库连接
 │   ├── dependencies.py   # 依赖注入
+│   ├── logging_config.py # 运行日志配置
 │   ├── main.py           # FastAPI 应用入口
+│   ├── middleware.py     # 请求日志中间件
 │   ├── models.py         # 数据库模型
 │   └── schemas.py        # Pydantic 数据模式
 ├── alembic.ini           # Alembic 配置

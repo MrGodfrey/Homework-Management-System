@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 import zipfile
@@ -148,6 +149,32 @@ def create_submission(db, storage, assignment, student_no, version, filename, bo
     db.add(SubmissionFile(submission_id=submission.id, filename=filename, cos_key=cos_key))
     db.commit()
     return submission
+
+
+def test_request_logging_includes_request_context(classroom_client, caplog):
+    client, _SessionLocal, _storage = classroom_client
+
+    caplog.set_level(logging.INFO, logger="app.request")
+    response = client.get(
+        "/api/settings/upload-limits",
+        headers={"X-Request-ID": "test-request-id"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "test-request-id"
+
+    records = [
+        record
+        for record in caplog.records
+        if record.name == "app.request" and record.getMessage() == "request_completed"
+    ]
+    assert records
+    record = records[-1]
+    assert record.request_id == "test-request-id"
+    assert record.method == "GET"
+    assert record.path == "/api/settings/upload-limits"
+    assert record.status_code == 200
+    assert record.duration_ms >= 0
 
 
 def test_upload_limits_endpoint_exposes_configured_submission_limit(classroom_client):

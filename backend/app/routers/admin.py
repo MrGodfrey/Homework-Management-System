@@ -68,12 +68,7 @@ from app.cos_utils import (
     upload_file_to_cos,
 )
 
-# 配置日志
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 
 router = APIRouter(
     prefix="/api/admin",
@@ -603,17 +598,34 @@ def get_assignments(db: Session = Depends(get_db)):
     return result
 
 @router.post("/assignments", response_model=AssignmentOut)
-def create_assignment(assignment: AssignmentCreate, db: Session = Depends(get_db)):
+def create_assignment(
+    assignment: AssignmentCreate,
+    db: Session = Depends(get_db),
+    current_instructor: Instructor = Depends(get_current_instructor),
+):
     payload = assignment.dict()
     payload["file_rules"] = sanitize_file_rules(payload.get("file_rules"))
     new_assignment = Assignment(**payload)
     db.add(new_assignment)
     db.commit()
     db.refresh(new_assignment)
+    logger.info(
+        "assignment_created",
+        extra={
+            "user_type": "instructor",
+            "user_id": current_instructor.id,
+            "assignment_id": new_assignment.id,
+        },
+    )
     return new_assignment
 
 @router.put("/assignments/{assignment_id}", response_model=AssignmentOut)
-def update_assignment(assignment_id: int, assignment: AssignmentUpdate, db: Session = Depends(get_db)):
+def update_assignment(
+    assignment_id: int,
+    assignment: AssignmentUpdate,
+    db: Session = Depends(get_db),
+    current_instructor: Instructor = Depends(get_current_instructor),
+):
     db_assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
     if not db_assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -626,6 +638,15 @@ def update_assignment(assignment_id: int, assignment: AssignmentUpdate, db: Sess
         
     db.commit()
     db.refresh(db_assignment)
+    logger.info(
+        "assignment_updated",
+        extra={
+            "user_type": "instructor",
+            "user_id": current_instructor.id,
+            "assignment_id": db_assignment.id,
+            "updated_fields": sorted(payload.keys()),
+        },
+    )
     return db_assignment
 
 @router.get("/assignments/{assignment_id}/ai-settings")
@@ -1180,7 +1201,12 @@ def export_assignment_csv(assignment_id: int, db: Session = Depends(get_db)):
     )
 
 @router.patch("/submissions/{sub_id}/grade")
-def grade_submission(sub_id: int, grade_data: GradeSubmission, db: Session = Depends(get_db)):
+def grade_submission(
+    sub_id: int,
+    grade_data: GradeSubmission,
+    db: Session = Depends(get_db),
+    current_instructor: Instructor = Depends(get_current_instructor),
+):
     """PATCH /submissions/{sub_id}/grade - 教师评分接口"""
     submission = db.query(Submission).filter(Submission.id == sub_id).first()
     if not submission:
@@ -1193,6 +1219,17 @@ def grade_submission(sub_id: int, grade_data: GradeSubmission, db: Session = Dep
     submission.is_graded = True
     db.commit()
     db.refresh(submission)
+    logger.info(
+        "submission_graded",
+        extra={
+            "user_type": "instructor",
+            "user_id": current_instructor.id,
+            "assignment_id": submission.assignment_id,
+            "submission_id": submission.id,
+            "student_id": submission.student_id,
+            "score": submission.score,
+        },
+    )
     
     return {
         "message": "Grade updated successfully",

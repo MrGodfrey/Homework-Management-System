@@ -11,6 +11,9 @@ env/
 .idea/
 .vscode/
 *.log
+*.log.*
+logs/
+backend/logs/
 dist/
 build/
 *.egg-info/

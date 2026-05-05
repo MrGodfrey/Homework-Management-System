@@ -93,6 +93,8 @@ classroom/
 │   ├── app/
 │   │   ├── main.py             # 应用入口，CORS 配置
 │   │   ├── config.py           # 环境变量配置
+│   │   ├── logging_config.py   # 运行日志配置（控制台 + 轮转文件）
+│   │   ├── middleware.py       # 请求日志中间件
 │   │   ├── models.py           # 数据库模型（10 张表，含 AI 评阅任务与结果）
 │   │   ├── schemas.py          # Pydantic 请求/响应模型
 │   │   ├── auth.py             # 密码加密 & JWT 处理
@@ -154,6 +156,13 @@ TENCENT_MODEL_KEY_SECRET=your-tokenhub-api-key
 HOMEWORK_SUMMARY_MODEL=deepseek-v4-flash
 TOKENHUB_BASE_URL=https://tokenhub.tencentmaas.com/v1/chat/completions
 AI_GRADING_FAKE_RESPONSE=0
+
+# 运行日志（可选；默认写入 backend/logs/classroom.log）
+# LOG_LEVEL=INFO
+# LOG_TO_FILE=1
+# LOG_DIR=/absolute/path/to/classroom/backend/logs
+# LOG_MAX_BYTES=10485760
+# LOG_BACKUP_COUNT=7
 ```
 
 ### 3. 一键启动
@@ -188,6 +197,27 @@ npm run test:web
 ```
 
 这条命令会自动拉起隔离的前后端测试实例，并执行完整浏览器回归。详细说明见 [MYSELFTEST.md](./MYSELFTEST.md)。
+
+---
+
+## 🧾 运行日志
+
+后端启动后会自动记录应用日志，默认文件为 `backend/logs/classroom.log`，并按大小轮转为 `classroom.log.1`、`classroom.log.2` 等。日志包含请求路径、状态码、耗时、请求 ID、登录成功/失败、学生提交、作业创建/更新、评分和 AI 初评等事件；不会记录请求体、密码或 Token。
+
+常用查看命令：
+
+```bash
+# 实时查看后端应用日志
+tail -f backend/logs/classroom.log
+
+# 查看错误与异常
+rg '"level": "ERROR"|"message": "request_failed"' backend/logs
+
+# 线上下载到本地分析（按实际 host 与路径替换）
+scp <ssh-host-alias>:<project-dir>/backend/logs/classroom.log ./classroom-online.log
+```
+
+更多线上排查和本地分析命令见 [使用说明.md](./使用说明.md)。
 
 ---
 
@@ -345,7 +375,7 @@ AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb
 | 身份认证 | JWT Token（30 分钟过期） |
 | 登录保护 | 5 次失败锁定 10 分钟 |
 | 文件下载 | COS 预签名 URL（10 分钟有效） |
-| 操作审计 | 全量审计日志记录 |
+| 操作审计 | 数据库审计表 + 应用请求/异常日志 |
 | 环境隔离 | DEV/PROD 独立存储路径 |
 | 文件安全 | 时间戳 + UUID 命名，防覆盖 |
 | AI 边界 | 教师手动触发、学生端不可见、不自动覆盖最终成绩 |

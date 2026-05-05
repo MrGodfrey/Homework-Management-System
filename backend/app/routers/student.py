@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -19,6 +21,7 @@ router = APIRouter(
     prefix="/api/assignments",
     tags=["Student Assignments"]
 )
+logger = logging.getLogger(__name__)
 
 @router.get("/me", response_model=StudentMeOut)
 def get_current_student_info(current_student: Student = Depends(get_current_student)):
@@ -247,6 +250,18 @@ async def submit_assignment(
     db.add(audit_log)
     
     db.commit()
+    logger.info(
+        "student_submission_created",
+        extra={
+            "user_type": "student",
+            "user_id": current_student.id,
+            "student_no": current_student.student_id,
+            "assignment_id": assign.id,
+            "submission_id": new_submission.id,
+            "version_no": new_version_no,
+            "file_count": len(files),
+        },
+    )
     
     return {
         "message": "Submission successful",

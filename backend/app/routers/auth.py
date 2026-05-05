@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -7,6 +9,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 class StudentLogin(BaseModel):
     student_id: str
@@ -25,6 +28,10 @@ def login_student(data: StudentLogin, db: Session = Depends(get_db)):
     # Check lock
     tracker = login_attempts.get(data.student_id, {"attempts": 0, "locked_until": None})
     if tracker["locked_until"] and now < tracker["locked_until"]:
+        logger.warning(
+            "student_login_locked",
+            extra={"user_type": "student", "login_id": data.student_id},
+        )
         raise HTTPException(status_code=403, detail="Account locked due to too many failed attempts. Try again later.")
 
     # Reset attempts if lock expired
@@ -39,8 +46,16 @@ def login_student(data: StudentLogin, db: Session = Depends(get_db)):
         if tracker["attempts"] >= 5:
             tracker["locked_until"] = now + timedelta(minutes=10)
             login_attempts[data.student_id] = tracker
+            logger.warning(
+                "student_login_locked_after_failures",
+                extra={"user_type": "student", "login_id": data.student_id, "attempts": tracker["attempts"]},
+            )
             raise HTTPException(status_code=403, detail="Account locked due to too many failed attempts. Try again later.")
         login_attempts[data.student_id] = tracker
+        logger.warning(
+            "student_login_failed",
+            extra={"user_type": "student", "login_id": data.student_id, "attempts": tracker["attempts"]},
+        )
         raise HTTPException(status_code=401, detail="Incorrect credentials")
 
     # Reset tracker on success
@@ -48,6 +63,10 @@ def login_student(data: StudentLogin, db: Session = Depends(get_db)):
         del login_attempts[data.student_id]
 
     token = create_access_token({"sub": str(student.id)}, role="student")
+    logger.info(
+        "student_login_succeeded",
+        extra={"user_type": "student", "user_id": student.id, "student_no": student.student_id},
+    )
     return {"access_token": token, "token_type": "bearer"}
 
 @router.post("/instructor/login")
@@ -55,7 +74,15 @@ def login_instructor(data: InstructorLogin, db: Session = Depends(get_db)):
     instructor = db.query(Instructor).filter(Instructor.username == data.username).first()
     
     if not instructor or not verify_password(data.password, instructor.hashed_password):
+        logger.warning(
+            "instructor_login_failed",
+            extra={"user_type": "instructor", "login_id": data.username},
+        )
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     token = create_access_token({"sub": str(instructor.id)}, role="instructor")
+    logger.info(
+        "instructor_login_succeeded",
+        extra={"user_type": "instructor", "user_id": instructor.id, "username": instructor.username},
+    )
     return {"access_token": token, "token_type": "bearer"}

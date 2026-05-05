@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
+from app.logging_config import configure_logging
+from app.middleware import RequestLoggingMiddleware
+
+configure_logging()
 
 Base.metadata.create_all(bind=engine)
 
@@ -13,6 +17,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RequestLoggingMiddleware)
 
 from app.routers import auth, student, admin, storage, settings
 app.include_router(auth.router)

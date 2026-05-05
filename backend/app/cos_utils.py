@@ -1,13 +1,8 @@
 from qcloud_cos import CosConfig
 from qcloud_cos import CosS3Client
 from app.config import settings
-import logging
-import sys
 from pathlib import Path
 from urllib.parse import quote
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 # Initialize COS Client
 config = CosConfig(
