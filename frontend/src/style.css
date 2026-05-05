@@ -447,18 +447,25 @@ select {
 }
 
 .back-link {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
   gap: 8px;
   width: auto;
+  min-height: auto;
   padding: 0;
   border: 0;
   background: transparent;
+  box-shadow: none;
   color: var(--brand);
   font-size: 0.92rem;
   font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
   cursor: pointer;
+  transition: color 0.18s ease;
 }
 
 .back-link:hover {
