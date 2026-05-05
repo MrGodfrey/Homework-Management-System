@@ -449,15 +449,28 @@ select {
 .back-link {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 8px;
-  color: var(--text-muted);
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
   font-size: 0.92rem;
   font-weight: 700;
   cursor: pointer;
 }
 
 .back-link:hover {
-  color: var(--text-strong);
+  color: var(--brand-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.back-link:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 
 .subtle-panel {

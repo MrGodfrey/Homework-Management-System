@@ -36,16 +36,6 @@ require_env_var() {
   fi
 }
 
-load_env_file
-require_env_var REMOTE_ALIAS
-require_env_var REMOTE_PUBLIC_URL
-require_env_var PROJECT_DIR
-require_env_var BACKEND_SERVICE
-require_env_var FRONTEND_PUBLISH_DIR
-
-BACKEND_DIR="${BACKEND_DIR:-$PROJECT_DIR/backend}"
-FRONTEND_DIR="${FRONTEND_DIR:-$PROJECT_DIR/frontend}"
-
 MODE="full"
 
 EXCLUDES=(
@@ -82,7 +72,7 @@ EXCLUDES=(
 usage() {
   cat <<EOF
 用法：
-  ./deploy.sh                本地一键发布到 ${REMOTE_ALIAS}
+  ./deploy.sh                本地一键发布到 ${REMOTE_ALIAS:-<remote>}
   ./deploy.sh --sync-only    仅同步代码到服务器
   ./deploy.sh --remote-phase 远端部署阶段（内部使用）
 EOF
@@ -339,6 +329,19 @@ parse_args() {
 
 main() {
   parse_args "$@"
+  load_env_file
+
+  if [[ "$MODE" != "remote-phase" ]]; then
+    require_env_var REMOTE_ALIAS
+  fi
+  require_env_var REMOTE_PUBLIC_URL
+  require_env_var PROJECT_DIR
+  require_env_var BACKEND_SERVICE
+  require_env_var FRONTEND_PUBLISH_DIR
+
+  BACKEND_DIR="${BACKEND_DIR:-$PROJECT_DIR/backend}"
+  FRONTEND_DIR="${FRONTEND_DIR:-$PROJECT_DIR/frontend}"
+
   ensure_project_root
 
   case "$MODE" in

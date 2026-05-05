@@ -25,7 +25,7 @@
             <el-icon><User /></el-icon>
             <span>提交学生</span>
           </div>
-          <div class="summary-tile-value">{{ groupedSubmissions.length }}</div>
+          <div class="summary-tile-value">{{ filteredGroupedSubmissions.length }}</div>
         </article>
 
         <article class="summary-tile">
@@ -50,13 +50,20 @@
           <div>
             <h2 class="section-title">提交清单</h2>
           </div>
+
+          <el-input v-model="submissionSearch" clearable placeholder="搜索姓名或学号" class="submission-search">
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
         </div>
 
         <div class="table-shell desktop-view">
           <el-table
             ref="tableRef"
-            :data="groupedSubmissions"
+            :data="filteredGroupedSubmissions"
             v-loading="loading"
+            empty-text="没有匹配的提交"
             style="width: 100%"
             @row-click="toggleExpand"
             row-class-name="clickable-row"
@@ -88,37 +95,42 @@
                         </div>
                       </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="360" align="center">
+                    <el-table-column label="操作" width="320" align="center">
                       <template #default="{ row: sub }">
-                        <div class="inline-actions">
-                          <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
-                          <el-button
-                            size="small"
-                            type="success"
-                            plain
-                            :loading="aiGeneratingId === sub.id"
-                            @click="generateAIReview(sub, false)"
-                          >
-                            生成 AI 初评
-                          </el-button>
+                        <div class="submission-actions" @click.stop>
+                          <el-button size="small" @click.stop="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
                           <el-button
                             v-if="sub.ai_review_status === 'succeeded'"
                             size="small"
-                            @click="showAIReport(sub)"
+                            @click.stop="showAIReport(sub)"
                           >
                             查看 AI 报告
                           </el-button>
                           <el-button
-                            v-if="sub.ai_review_status === 'succeeded'"
+                            v-else
                             size="small"
-                            type="warning"
+                            type="success"
                             plain
-                            :loading="aiGeneratingId === sub.id"
-                            @click="generateAIReview(sub, true)"
+                            :loading="aiGeneratingId === sub.id || sub.ai_review_status === 'running'"
+                            :disabled="sub.ai_review_status === 'queued'"
+                            @click.stop="generateAIReview(sub, false)"
                           >
-                            重新生成
+                            {{ aiGenerateButtonLabel(sub.ai_review_status) }}
                           </el-button>
-                          <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
+                          <span v-if="sub.ai_review_status === 'succeeded'" class="action-dropdown" @click.stop>
+                            <el-dropdown trigger="click" @command="(command) => handleAICommand(command, sub)">
+                              <el-button size="small">
+                                更多
+                                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                              </el-button>
+                              <template #dropdown>
+                                <el-dropdown-menu>
+                                  <el-dropdown-item command="regenerate">重新生成 AI 初评</el-dropdown-item>
+                                </el-dropdown-menu>
+                              </template>
+                            </el-dropdown>
+                          </span>
+                          <el-button size="small" type="primary" @click.stop="openGradeDialog(sub)">评分</el-button>
                         </div>
                       </template>
                     </el-table-column>
@@ -151,7 +163,11 @@
 
         <div class="table-shell mobile-view">
           <div class="card-stack">
-            <article v-for="group in groupedSubmissions" :key="group.student_id" class="list-card">
+            <div v-if="!loading && filteredGroupedSubmissions.length === 0" class="empty-panel">
+              没有匹配的提交
+            </div>
+
+            <article v-for="group in filteredGroupedSubmissions" :key="group.student_id" class="list-card">
               <div class="list-card-header">
                 <div>
                   <h3 class="list-card-title">{{ group.student_name }}</h3>
@@ -172,9 +188,28 @@
                     <el-tag :type="aiStatusType(sub.ai_review_status)" effect="light">{{ aiStatusLabel(sub.ai_review_status) }}</el-tag>
                     <span v-if="sub.ai_score !== null && sub.ai_score !== undefined" class="ai-score">{{ sub.ai_score }}分</span>
                     <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
-                    <el-button size="small" type="success" plain :loading="aiGeneratingId === sub.id" @click="generateAIReview(sub, false)">生成 AI 初评</el-button>
-                    <el-button v-if="sub.ai_review_status === 'succeeded'" size="small" @click="showAIReport(sub)">查看报告</el-button>
-                    <el-button v-if="sub.ai_review_status === 'succeeded'" size="small" type="warning" plain :loading="aiGeneratingId === sub.id" @click="generateAIReview(sub, true)">重新生成</el-button>
+                    <el-button v-if="sub.ai_review_status === 'succeeded'" size="small" @click="showAIReport(sub)">查看 AI 报告</el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="success"
+                      plain
+                      :loading="aiGeneratingId === sub.id || sub.ai_review_status === 'running'"
+                      :disabled="sub.ai_review_status === 'queued'"
+                      @click="generateAIReview(sub, false)"
+                    >
+                      {{ aiGenerateButtonLabel(sub.ai_review_status) }}
+                    </el-button>
+                    <el-button
+                      v-if="sub.ai_review_status === 'succeeded'"
+                      size="small"
+                      type="warning"
+                      plain
+                      :loading="aiGeneratingId === sub.id"
+                      @click="generateAIReview(sub, true)"
+                    >
+                      重新生成
+                    </el-button>
                     <el-button size="small" type="primary" @click="openGradeDialog(sub)">评分</el-button>
                   </div>
                 </div>
@@ -239,7 +274,7 @@
 <script setup>
 import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, CircleCheckFilled, User, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, CircleCheckFilled, Search, User, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
@@ -260,6 +295,7 @@ const currentStudent = ref(null)
 const gradeForm = reactive({ score: 85 })
 const tableRef = ref(null)
 const assignmentTitle = ref('提交详情')
+const submissionSearch = ref('')
 
 const groupedSubmissions = computed(() => {
   const groups = {}
@@ -295,8 +331,18 @@ const groupedSubmissions = computed(() => {
     .sort((a, b) => a.student_id.localeCompare(b.student_id))
 })
 
-const gradedCount = computed(() => groupedSubmissions.value.filter((group) => group.latestGraded).length)
-const pendingCount = computed(() => Math.max(groupedSubmissions.value.length - gradedCount.value, 0))
+const filteredGroupedSubmissions = computed(() => {
+  const keyword = submissionSearch.value.trim().toLowerCase()
+  if (!keyword) return groupedSubmissions.value
+
+  return groupedSubmissions.value.filter((group) => (
+    group.student_id.toLowerCase().includes(keyword) ||
+    group.student_name.toLowerCase().includes(keyword)
+  ))
+})
+
+const gradedCount = computed(() => filteredGroupedSubmissions.value.filter((group) => group.latestGraded).length)
+const pendingCount = computed(() => Math.max(filteredGroupedSubmissions.value.length - gradedCount.value, 0))
 
 function toggleExpand(row) {
   tableRef.value?.toggleRowExpansion(row)
@@ -344,9 +390,22 @@ function aiStatusType(status) {
   return types[status] || 'info'
 }
 
+function aiGenerateButtonLabel(status) {
+  if (status === 'failed') return '重试 AI 初评'
+  if (status === 'queued') return '排队中'
+  if (status === 'running') return '生成中'
+  return '生成 AI 初评'
+}
+
 function useAIScore() {
   if (currentStudent.value?.ai_score === null || currentStudent.value?.ai_score === undefined) return
   gradeForm.score = Number(currentStudent.value.ai_score)
+}
+
+function handleAICommand(command, row) {
+  if (command === 'regenerate') {
+    generateAIReview(row, true)
+  }
 }
 
 function openGradeDialog(row) {
@@ -515,6 +574,29 @@ onMounted(loadSubmissions)
   background: #f8fafc;
 }
 
+.submission-search {
+  width: min(320px, 100%);
+}
+
+.submission-actions {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.submission-actions :deep(.el-button--small) {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.action-dropdown {
+  display: inline-flex;
+}
+
 .submit-pill {
   display: inline-flex;
   align-items: center;
@@ -587,5 +669,11 @@ onMounted(loadSubmissions)
   font-size: 0.88rem;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .submission-search {
+    width: 100%;
+  }
 }
 </style>

@@ -7,24 +7,29 @@
         </div>
 
         <div class="page-hero-actions">
-          <el-button type="success" :disabled="exportState.active" @click="exportAllGradesCSV">导出成绩</el-button>
-          <el-button
-            type="warning"
-            plain
-            :loading="exportState.active && exportState.mode === 'all'"
-            :disabled="exportState.active && exportState.mode !== 'all'"
-            @click="exportAllSubmissionsZip('all')"
-          >
-            导出所有作业
-          </el-button>
-          <el-button
-            type="warning"
-            :loading="exportState.active && exportState.mode === 'latest'"
-            :disabled="exportState.active && exportState.mode !== 'latest'"
-            @click="exportAllSubmissionsZip('latest')"
-          >
-            导出最新版
-          </el-button>
+          <el-dropdown trigger="click" @command="handleExportCommand">
+            <el-button
+              type="success"
+              :loading="exportState.active || gradeExporting"
+              :disabled="exportState.active || gradeExporting"
+            >
+              {{ exportButtonLabel }}
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="grades" :disabled="exportState.active || gradeExporting">
+                  导出成绩 CSV
+                </el-dropdown-item>
+                <el-dropdown-item command="latest" :disabled="exportState.active || gradeExporting">
+                  导出最新版本作业
+                </el-dropdown-item>
+                <el-dropdown-item command="all" :disabled="exportState.active || gradeExporting">
+                  导出所有版本作业
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button type="primary" @click="openCreate">新建作业</el-button>
         </div>
       </section>
@@ -68,7 +73,7 @@
         <article class="summary-tile">
           <div class="summary-tile-label">
             <el-icon><FolderOpened /></el-icon>
-            <span>附件能力</span>
+            <span>可添加附件的作业</span>
           </div>
           <div class="summary-tile-value">{{ attachmentReadyCount }}</div>
         </article>
@@ -259,7 +264,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { Document, FolderOpened, User } from '@element-plus/icons-vue'
+import { ArrowDown, Document, FolderOpened, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
 import api from '@/utils/api'
@@ -274,6 +279,7 @@ const totalStudents = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
+const gradeExporting = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ title: '', description: '', deadline: null, allow_late: false, file_rules: '', ai_grading_rubric: '' })
@@ -304,6 +310,11 @@ const uploadLimit = reactive({
 const attachmentReadyCount = computed(() => assignments.value.filter((item) => item.id).length)
 const showExportProgress = computed(() => exportState.active || ['complete', 'failed'].includes(exportState.status))
 const exportModeLabel = computed(() => (exportState.mode === 'all' ? '导出所有作业' : '导出最新版'))
+const exportButtonLabel = computed(() => {
+  if (gradeExporting.value) return '导出成绩中'
+  if (exportState.active) return exportModeLabel.value
+  return '导出'
+})
 const exportProgressStatus = computed(() => {
   if (exportState.status === 'failed') return 'exception'
   if (exportState.status === 'complete') return 'success'
@@ -470,6 +481,8 @@ function sanitizeFileRules(value) {
 }
 
 async function exportAllGradesCSV() {
+  if (gradeExporting.value || exportState.active) return
+  gradeExporting.value = true
   try {
     const res = await api.get('/admin/export_all_grades_csv', { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([res.data]))
@@ -482,6 +495,19 @@ async function exportAllGradesCSV() {
     ElMessage.success('CSV 导出成功')
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '导出失败')
+  } finally {
+    gradeExporting.value = false
+  }
+}
+
+function handleExportCommand(command) {
+  if (command === 'grades') {
+    exportAllGradesCSV()
+    return
+  }
+
+  if (command === 'latest' || command === 'all') {
+    exportAllSubmissionsZip(command)
   }
 }
 
