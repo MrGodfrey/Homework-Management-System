@@ -21,6 +21,8 @@ COMPRESSED_EXTENSIONS = (
 TEXT_EXTENSIONS = {".md", ".txt", ".py", ".tex", ".csv"}
 NOTEBOOK_EXTENSION = ".ipynb"
 BASE64_LIKE_RE = re.compile(r"(?<![A-Za-z0-9+/=])(?:[A-Za-z0-9+/]{120,}={0,2})(?![A-Za-z0-9+/=])")
+NOTEBOOK_START_CODE_MARKER = "### START CODE HERE ###"
+NOTEBOOK_END_CODE_MARKER = "### END CODE HERE ###"
 
 
 @dataclass
@@ -136,6 +138,24 @@ def _count_image_outputs(outputs: list[object]) -> int:
     return image_outputs
 
 
+def _count_notebook_code_marker_blocks(source: str) -> int:
+    count = 0
+    search_from = 0
+    while True:
+        start_index = source.find(NOTEBOOK_START_CODE_MARKER, search_from)
+        if start_index == -1:
+            return count
+        end_index = source.find(NOTEBOOK_END_CODE_MARKER, start_index + len(NOTEBOOK_START_CODE_MARKER))
+        if end_index == -1:
+            return count
+        count += 1
+        search_from = end_index + len(NOTEBOOK_END_CODE_MARKER)
+
+
+def _has_notebook_code_marker_block(source: str) -> bool:
+    return _count_notebook_code_marker_blocks(source) > 0
+
+
 def _extract_notebook_file(
     filename: str,
     file_bytes: bytes,
@@ -165,9 +185,24 @@ def _extract_notebook_file(
             "reason": "notebook_cells_missing",
         }, [f"{filename} 缺少有效 cells，已跳过"], False
 
+    normalized_cells: list[tuple[int, dict, str]] = []
+    for index, cell in enumerate(cells, start=1):
+        if not isinstance(cell, dict):
+            continue
+        normalized_cells.append((index, cell, normalize_source(cell.get("source"))))
+
+    marker_code_cell_indexes = {
+        index
+        for index, cell, raw_source in normalized_cells
+        if cell.get("cell_type") == "code" and _has_notebook_code_marker_block(raw_source)
+    }
+    use_marker_code_cells_only = bool(marker_code_cell_indexes)
+
     notebook_parts = [f"## Notebook: {filename}"]
     markdown_cells = 0
     code_cells = 0
+    marker_code_cells = 0
+    marker_blocks = 0
     outputs_count = 0
     image_outputs = 0
     attachments_count = 0
@@ -176,9 +211,7 @@ def _extract_notebook_file(
 
     cell_budget = max(file_max_chars, 1)
     used_in_file = 0
-    for index, cell in enumerate(cells, start=1):
-        if not isinstance(cell, dict):
-            continue
+    for index, cell, raw_source in normalized_cells:
         cell_type = cell.get("cell_type")
         outputs = cell.get("outputs") if isinstance(cell.get("outputs"), list) else []
         outputs_count += len(outputs)
@@ -189,8 +222,9 @@ def _extract_notebook_file(
 
         if cell_type not in {"markdown", "code"}:
             continue
+        if use_marker_code_cells_only and index not in marker_code_cell_indexes:
+            continue
 
-        raw_source = normalize_source(cell.get("source"))
         source, redacted = redact_base64_like_text(raw_source)
         redacted_any = redacted_any or redacted
         remaining_file_budget = cell_budget - used_in_file
@@ -206,6 +240,10 @@ def _extract_notebook_file(
             notebook_parts.append(f"\n### Cell {index} [markdown]\n{source}")
         else:
             code_cells += 1
+            block_count = _count_notebook_code_marker_blocks(raw_source)
+            if block_count:
+                marker_code_cells += 1
+                marker_blocks += block_count
             notebook_parts.append(f"\n### Cell {index} [code]\n```python\n{source}\n```")
         used_in_file += len(source)
 
@@ -241,8 +279,11 @@ def _extract_notebook_file(
     return next_used, {
         "filename": filename,
         "type": "notebook",
+        "source_mode": "marked_code_cells" if use_marker_code_cells_only else "markdown_and_code_cells",
         "markdown_cells": markdown_cells,
         "code_cells": code_cells,
+        "marked_code_cells": marker_code_cells,
+        "code_marker_blocks": marker_blocks,
         "outputs_ignored": outputs_count,
         "image_outputs_ignored": image_outputs,
         "attachments_ignored": attachments_count,

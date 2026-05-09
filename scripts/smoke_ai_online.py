@@ -181,7 +181,18 @@ def main() -> int:
                 },
                 {
                     "cell_type": "code",
-                    "source": ["print('visible code')\n"],
+                    "source": ["print('unmarked setup code should not be reviewed')\n"],
+                },
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "# GRADED FUNCTION: smoke_solution\n",
+                        "def smoke_solution():\n",
+                        "    ### START CODE HERE ###\n",
+                        "    visible_answer = 'marked code'\n",
+                        "    ### END CODE HERE ###\n",
+                        "    return visible_answer\n",
+                    ],
                     "outputs": [
                         {"output_type": "stream", "text": "OUTPUT_TEXT_SHOULD_NOT_BE_USED"},
                         {"output_type": "display_data", "data": {"image/png": "IMAGE_BASE64_SHOULD_NOT_BE_USED"}},
@@ -227,6 +238,11 @@ def main() -> int:
             raise AssertionError(f"Single AI review did not produce a result: {single_review}")
         manifest = single_review["result"]["file_manifest"][0]
         assert manifest["type"] == "notebook"
+        assert manifest["source_mode"] == "marked_code_cells"
+        assert manifest["markdown_cells"] == 0
+        assert manifest["code_cells"] == 1
+        assert manifest["marked_code_cells"] == 1
+        assert manifest["code_marker_blocks"] == 1
         assert manifest["outputs_ignored"] == 2
         assert manifest["image_outputs_ignored"] == 1
         assert manifest["attachments_ignored"] == 1

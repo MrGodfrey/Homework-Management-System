@@ -261,7 +261,7 @@ AI 初评是教师端的辅助工具，不会自动给学生打最终成绩，�
 - 不确定时降低置信度，并说明需要教师复核的位置。
 ```
 
-AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb`。Notebook 只读取 markdown/code cell source，不执行代码，也不读取 outputs、attachments、图片或 base64；压缩包不会被解压，历史压缩包会被跳过。若希望 AI 能有效评阅，请要求学生同时提交可读文本、源码或 Notebook。
+AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb`。Notebook 默认只读取 markdown/code cell source；如果发现成对的 `### START CODE HERE ###` 和 `### END CODE HERE ###` 标记，则只读取包含这些标记的代码单元。Notebook 不执行代码，也不读取 outputs、attachments、图片或 base64；压缩包不会被解压，历史压缩包会被跳过。若希望 AI 能有效评阅，请要求学生同时提交可读文本、源码或 Notebook。
 
 ---
 

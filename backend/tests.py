@@ -591,6 +591,119 @@ def test_ai_review_notebook_extraction_ignores_outputs_attachments_and_base64(cl
     result = response.json()["result"]
     manifest = result["file_manifest"][0]
     assert manifest["type"] == "notebook"
+    assert manifest["source_mode"] == "markdown_and_code_cells"
+    assert manifest["outputs_ignored"] == 2
+    assert manifest["image_outputs_ignored"] == 1
+    assert manifest["attachments_ignored"] == 1
+
+
+def test_ai_review_notebook_marker_cells_only_when_present(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".ipynb")
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "markdown",
+                    "source": ["# Assignment prompt\n", "MARKDOWN_PROMPT_SECRET\n"],
+                    "attachments": {
+                        "prompt.png": {"image/png": "ATTACHMENT_SECRET_BASE64"}
+                    },
+                },
+                {
+                    "cell_type": "code",
+                    "source": ["SETUP_SECRET = 'do not send this unmarked code cell'\n"],
+                    "outputs": [{"output_type": "stream", "text": "SETUP_OUTPUT_SECRET"}],
+                },
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "# GRADED FUNCTION: solve_one\n",
+                        "def solve_one():\n",
+                        "    ### START CODE HERE ###\n",
+                        "    answer_one = 42\n",
+                        "    ### END CODE HERE ###\n",
+                        "    return answer_one\n",
+                    ],
+                },
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "# GRADED FUNCTION: solve_two\n",
+                        "def solve_two(use_first):\n",
+                        "    if use_first:\n",
+                        "        ### START CODE HERE ###\n",
+                        "        answer_two = 'first branch'\n",
+                        "        ### END CODE HERE ###\n",
+                        "    else:\n",
+                        "        ### START CODE HERE ###\n",
+                        "        answer_two = 'second branch'\n",
+                        "        ### END CODE HERE ###\n",
+                        "    return answer_two\n",
+                    ],
+                    "outputs": [
+                        {"output_type": "display_data", "data": {"image/png": "IMAGE_SECRET_BASE64"}},
+                    ],
+                },
+            ]
+        }
+        submission = create_submission(
+            db,
+            storage,
+            assignment,
+            "20230001",
+            1,
+            "analysis.ipynb",
+            json.dumps(notebook).encode("utf-8"),
+        )
+        submission_id = submission.id
+    finally:
+        db.close()
+
+    captured = {}
+
+    def fake_completion(**kwargs):
+        captured["prompt"] = "\n".join(item["content"] for item in kwargs["messages"])
+        return {
+            "content": json.dumps({
+                "score": 86,
+                "confidence": "medium",
+                "summary": "Notebook marker extraction test.",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "marker cells only.",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 12,
+            "completion_tokens": 9,
+        }
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+    response = client.post(f"/api/admin/submissions/{submission_id}/ai-review", json={"force": False})
+
+    assert response.status_code == 200
+    prompt = captured["prompt"]
+    assert "GRADED FUNCTION: solve_one" in prompt
+    assert "answer_one = 42" in prompt
+    assert "GRADED FUNCTION: solve_two" in prompt
+    assert "answer_two = 'first branch'" in prompt
+    assert "answer_two = 'second branch'" in prompt
+    assert "MARKDOWN_PROMPT_SECRET" not in prompt
+    assert "SETUP_SECRET" not in prompt
+    assert "SETUP_OUTPUT_SECRET" not in prompt
+    assert "ATTACHMENT_SECRET_BASE64" not in prompt
+    assert "IMAGE_SECRET_BASE64" not in prompt
+
+    result = response.json()["result"]
+    manifest = result["file_manifest"][0]
+    assert manifest["type"] == "notebook"
+    assert manifest["source_mode"] == "marked_code_cells"
+    assert manifest["markdown_cells"] == 0
+    assert manifest["code_cells"] == 2
+    assert manifest["marked_code_cells"] == 2
+    assert manifest["code_marker_blocks"] == 3
     assert manifest["outputs_ignored"] == 2
     assert manifest["image_outputs_ignored"] == 1
     assert manifest["attachments_ignored"] == 1
