@@ -267,6 +267,59 @@
           <pre class="ai-report-text">{{ aiReport?.ai_report_text || '暂无报告' }}</pre>
         </div>
       </el-dialog>
+
+      <el-dialog
+        v-model="aiBatchProgress.visible"
+        title="批量生成 AI 初评"
+        width="min(640px, 94vw)"
+        :close-on-click-modal="!aiBatchLoading"
+        :close-on-press-escape="!aiBatchLoading"
+        :show-close="!aiBatchLoading"
+      >
+        <div class="ai-batch-dialog">
+          <el-progress
+            :percentage="aiBatchPercent"
+            :status="aiBatchProgressStatus"
+            :stroke-width="12"
+            striped
+            striped-flow
+          />
+
+          <div class="ai-batch-meta">
+            <span>已处理 {{ aiBatchProgress.processed }} / {{ aiBatchProgress.total }}</span>
+            <span>{{ aiBatchProgress.currentLabel || '准备开始' }}</span>
+          </div>
+
+          <div class="ai-batch-stats">
+            <div class="ai-batch-stat success">
+              <span class="stat-label">成功</span>
+              <strong>{{ aiBatchProgress.succeeded }}</strong>
+            </div>
+            <div class="ai-batch-stat danger">
+              <span class="stat-label">失败</span>
+              <strong>{{ aiBatchProgress.failed }}</strong>
+            </div>
+            <div class="ai-batch-stat muted">
+              <span class="stat-label">跳过</span>
+              <strong>{{ aiBatchProgress.skipped }}</strong>
+            </div>
+          </div>
+
+          <div v-if="aiBatchProgress.failures.length" class="ai-batch-failures">
+            <div class="failure-title">失败记录</div>
+            <div v-for="failure in aiBatchProgress.failures" :key="failure.submissionId" class="failure-item">
+              <span>{{ failure.label }}</span>
+              <small>{{ failure.message }}</small>
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="inline-actions" style="justify-content: flex-end">
+            <el-button :disabled="aiBatchLoading" @click="aiBatchProgress.visible = false">关闭</el-button>
+          </div>
+        </template>
+      </el-dialog>
     </div>
   </AppShell>
 </template>
@@ -289,6 +342,16 @@ const aiBatchLoading = ref(false)
 const aiGeneratingId = ref(null)
 const aiReportDialogVisible = ref(false)
 const aiReport = ref(null)
+const aiBatchProgress = reactive({
+  visible: false,
+  total: 0,
+  processed: 0,
+  succeeded: 0,
+  failed: 0,
+  skipped: 0,
+  currentLabel: '',
+  failures: []
+})
 const gradeDialogVisible = ref(false)
 const grading = ref(false)
 const currentStudent = ref(null)
@@ -343,6 +406,16 @@ const filteredGroupedSubmissions = computed(() => {
 
 const gradedCount = computed(() => filteredGroupedSubmissions.value.filter((group) => group.latestGraded).length)
 const pendingCount = computed(() => Math.max(filteredGroupedSubmissions.value.length - gradedCount.value, 0))
+const aiBatchPercent = computed(() => {
+  if (!aiBatchProgress.total) return 0
+  return Math.round((aiBatchProgress.processed / aiBatchProgress.total) * 100)
+})
+const aiBatchProgressStatus = computed(() => {
+  if (aiBatchLoading.value) return undefined
+  if (aiBatchProgress.failed > 0) return 'exception'
+  if (aiBatchProgress.processed >= aiBatchProgress.total && aiBatchProgress.total > 0) return 'success'
+  return undefined
+})
 
 function toggleExpand(row) {
   tableRef.value?.toggleRowExpansion(row)
@@ -434,18 +507,88 @@ async function generateAIReview(row, force) {
 }
 
 async function batchGenerateAIReview() {
+  if (aiBatchLoading.value) return
+
+  const latestSubmissions = groupedSubmissions.value
+    .map((group) => group.submissions[0])
+    .filter(Boolean)
+
+  resetAIBatchProgress(latestSubmissions.length)
+  aiBatchProgress.visible = true
+
+  if (latestSubmissions.length === 0) {
+    aiBatchProgress.currentLabel = '当前没有最新版提交'
+    ElMessage.info('当前没有可批量生成的提交')
+    return
+  }
+
   aiBatchLoading.value = true
   try {
-    const res = await api.post(`/admin/assignments/${route.params.id}/ai-review-jobs`, {
-      scope: 'latest_unreviewed_per_student'
-    })
-    ElMessage.success(`批量完成：成功 ${res.data.succeeded}，失败 ${res.data.failed}，已有 ${res.data.reused}`)
+    for (const sub of latestSubmissions) {
+      const label = `${sub.student_name || sub.student_id} v${sub.version}`
+      aiBatchProgress.currentLabel = `正在处理 ${label}`
+
+      if (shouldSkipBatchAIReview(sub)) {
+        aiBatchProgress.skipped += 1
+        aiBatchProgress.processed += 1
+        continue
+      }
+
+      try {
+        const res = await api.post(`/admin/submissions/${sub.id}/ai-review`, { force: false })
+        const data = res.data || {}
+        if (data.reused) {
+          aiBatchProgress.skipped += 1
+        } else if (data.result) {
+          aiBatchProgress.succeeded += 1
+        } else {
+          const message = data.job?.error_message || 'AI 初评失败'
+          aiBatchProgress.failed += 1
+          aiBatchProgress.failures.push({
+            submissionId: sub.id,
+            label,
+            message
+          })
+        }
+      } catch (e) {
+        aiBatchProgress.failed += 1
+        aiBatchProgress.failures.push({
+          submissionId: sub.id,
+          label,
+          message: e.response?.data?.detail || 'AI 初评生成失败'
+        })
+      } finally {
+        aiBatchProgress.processed += 1
+      }
+    }
+
+    aiBatchProgress.currentLabel = '批量生成已完成'
+    const summary = `批量完成：成功 ${aiBatchProgress.succeeded}，失败 ${aiBatchProgress.failed}，跳过 ${aiBatchProgress.skipped}`
+    if (aiBatchProgress.failed > 0) {
+      ElMessage.warning(summary)
+    } else {
+      ElMessage.success(summary)
+    }
     await loadSubmissions()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '批量生成失败')
   } finally {
     aiBatchLoading.value = false
   }
+}
+
+function resetAIBatchProgress(total) {
+  aiBatchProgress.total = total
+  aiBatchProgress.processed = 0
+  aiBatchProgress.succeeded = 0
+  aiBatchProgress.failed = 0
+  aiBatchProgress.skipped = 0
+  aiBatchProgress.currentLabel = ''
+  aiBatchProgress.failures = []
+}
+
+function shouldSkipBatchAIReview(submission) {
+  return ['succeeded', 'queued', 'running'].includes(submission.ai_review_status)
 }
 
 async function showAIReport(row) {
@@ -671,9 +814,103 @@ onMounted(loadSubmissions)
   white-space: pre-wrap;
 }
 
+.ai-batch-dialog {
+  display: grid;
+  gap: 16px;
+}
+
+.ai-batch-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.ai-batch-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-batch-stat {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.ai-batch-stat strong {
+  color: var(--text);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.ai-batch-stat.success strong {
+  color: #047857;
+}
+
+.ai-batch-stat.danger strong {
+  color: #b91c1c;
+}
+
+.ai-batch-stat.muted strong {
+  color: var(--text-muted);
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.ai-batch-failures {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+}
+
+.failure-title {
+  color: #991b1b;
+  font-weight: 800;
+}
+
+.failure-item {
+  display: grid;
+  gap: 2px;
+}
+
+.failure-item span {
+  color: #7f1d1d;
+  font-weight: 700;
+}
+
+.failure-item small {
+  color: #991b1b;
+  line-height: 1.4;
+}
+
 @media (max-width: 640px) {
   .submission-search {
     width: 100%;
+  }
+
+  .ai-batch-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ai-batch-stats {
+    grid-template-columns: 1fr;
   }
 }
 </style>

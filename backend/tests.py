@@ -446,6 +446,20 @@ def test_batch_ai_review_processes_latest_unreviewed_versions_only(classroom_cli
         alice_v1 = create_submission(db, storage, assignment, "20230001", 1, "alice-v1.md", b"# Alice v1\n")
         alice_v2 = create_submission(db, storage, assignment, "20230001", 2, "alice-v2.md", b"# Alice v2\n")
         bob_v1 = create_submission(db, storage, assignment, "20230002", 1, "bob-v1.md", b"# Bob v1\n")
+        db.add(AIGradingResult(
+            submission_id=alice_v2.id,
+            job_id="existing-alice-v2",
+            assignment_id=assignment.id,
+            student_id=alice_v2.student_id,
+            version_no=alice_v2.version_no,
+            model="deepseek-v4-flash",
+            ai_score=90,
+            confidence="medium",
+            report_text="已有最新版初评",
+            created_at=beijing_now(),
+            is_latest=True,
+        ))
+        db.commit()
         assignment_id = assignment.id
         alice_v1_id = alice_v1.id
         alice_v2_id = alice_v2.id
@@ -477,16 +491,17 @@ def test_batch_ai_review_processes_latest_unreviewed_versions_only(classroom_cli
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total"] == 2
-    assert payload["succeeded"] == 2
+    assert payload["total"] == 1
+    assert payload["succeeded"] == 1
     processed_submission_ids = {item["submission_id"] for item in payload["items"]}
-    assert processed_submission_ids == {alice_v2_id, bob_v1_id}
+    assert processed_submission_ids == {bob_v1_id}
     assert alice_v1_id not in processed_submission_ids
+    assert alice_v2_id not in processed_submission_ids
 
     db = SessionLocal()
     try:
         assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v1_id).count() == 0
-        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v2_id).one().version_no == 2
+        assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v2_id).one().report_text == "已有最新版初评"
         assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == bob_v1_id).one().version_no == 1
     finally:
         db.close()

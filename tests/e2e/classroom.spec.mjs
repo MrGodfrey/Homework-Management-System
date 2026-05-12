@@ -319,7 +319,13 @@ test("website regression covers the full classroom workflow", async ({ browser }
     await adminPage.keyboard.press("Escape");
 
     await adminPage.getByRole("button", { name: "批量生成 AI 初评" }).click();
-    await expect(adminPage.getByText(/批量完成：成功 1，失败 0/)).toBeVisible();
+    const aiBatchDialog = adminPage.getByRole("dialog", { name: "批量生成 AI 初评" });
+    await expect(aiBatchDialog).toContainText("已处理");
+    await expect(aiBatchDialog).toContainText("跳过");
+    await expect(adminPage.getByText(/批量完成：成功 1，失败 0，跳过 1/)).toBeVisible();
+    await expect(aiBatchDialog).toContainText("成功");
+    await expect(aiBatchDialog).toContainText("失败");
+    await aiBatchDialog.getByRole("button", { name: "关闭" }).click();
     latestVersionRow = adminPage.locator(".expand-content .el-table__row").filter({ hasText: "v2" }).first();
     if (!(await latestVersionRow.isVisible().catch(() => false))) {
       await tableRowByText(adminPage, studentAccount.studentId).click();
