@@ -296,6 +296,29 @@ def _get_export_job_or_404(job_id: str) -> dict:
         return dict(job)
 
 
+def _has_teacher_comment(submission: Submission) -> bool:
+    return bool((submission.teacher_comment or "").strip())
+
+
+def _teacher_comment_unread(submission: Submission) -> bool:
+    if not _has_teacher_comment(submission):
+        return False
+    if not submission.teacher_comment_seen_at:
+        return True
+    if submission.teacher_comment_updated_at:
+        return submission.teacher_comment_seen_at < submission.teacher_comment_updated_at
+    return False
+
+
+def _serialize_teacher_comment_state(submission: Submission) -> dict:
+    return {
+        "teacher_comment": submission.teacher_comment if _has_teacher_comment(submission) else None,
+        "teacher_comment_updated_at": submission.teacher_comment_updated_at,
+        "teacher_comment_unread": _teacher_comment_unread(submission),
+        "has_teacher_comment": _has_teacher_comment(submission),
+    }
+
+
 def _update_export_job(job_id: str, **updates) -> None:
     with _export_jobs_lock:
         job = _export_jobs.get(job_id)
@@ -952,6 +975,7 @@ def get_submissions(assignment_id: int, db: Session = Depends(get_db)):
             "time": sub.submitted_at,
             "score": sub.score,
             "is_graded": sub.is_graded,
+            **_serialize_teacher_comment_state(sub),
             **ai_state,
         })
     return res
@@ -1215,6 +1239,16 @@ def grade_submission(
     # 更新评分信息
     if grade_data.score is not None:
         submission.score = grade_data.score
+
+    comment_changed = False
+    if "teacher_comment" in grade_data.model_fields_set:
+        new_comment = grade_data.teacher_comment.strip() if grade_data.teacher_comment else None
+        old_comment = submission.teacher_comment.strip() if submission.teacher_comment else None
+        if new_comment != old_comment:
+            submission.teacher_comment = new_comment
+            submission.teacher_comment_seen_at = None
+            submission.teacher_comment_updated_at = beijing_now() if new_comment else None
+            comment_changed = True
     
     submission.is_graded = True
     db.commit()
@@ -1228,6 +1262,8 @@ def grade_submission(
             "submission_id": submission.id,
             "student_id": submission.student_id,
             "score": submission.score,
+            "teacher_comment_changed": comment_changed,
+            "has_teacher_comment": _has_teacher_comment(submission),
         },
     )
     
@@ -1235,7 +1271,8 @@ def grade_submission(
         "message": "Grade updated successfully",
         "submission_id": submission.id,
         "score": submission.score,
-        "is_graded": submission.is_graded
+        "is_graded": submission.is_graded,
+        **_serialize_teacher_comment_state(submission),
     }
 
 @router.get("/logs")

@@ -389,6 +389,65 @@ def test_ai_review_binds_to_submission_version_and_does_not_write_final_score(cl
     assert "ai_score" not in json.dumps(student_history_response.json(), ensure_ascii=False)
 
 
+def test_teacher_comment_is_visible_to_student_and_tracks_unread_updates(classroom_client):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        submission = create_submission(db, storage, assignment, "20230001", 1, "answer.md", b"# Answer\n")
+        assignment_id = assignment.id
+        submission_id = submission.id
+    finally:
+        db.close()
+
+    grade_response = client.patch(
+        f"/api/admin/submissions/{submission_id}/grade",
+        json={"score": 92, "teacher_comment": "论证更完整，下一版注意补充数据来源。"},
+    )
+    assert grade_response.status_code == 200
+    assert grade_response.json()["teacher_comment_unread"] is True
+
+    admin_response = client.get(f"/api/admin/assignments/{assignment_id}/submissions")
+    assert admin_response.status_code == 200
+    admin_submission = admin_response.json()[0]
+    assert admin_submission["teacher_comment"] == "论证更完整，下一版注意补充数据来源。"
+    assert admin_submission["has_teacher_comment"] is True
+
+    student_list_response = client.get("/api/assignments")
+    assert student_list_response.status_code == 200
+    student_assignment = next(item for item in student_list_response.json() if item["id"] == assignment_id)
+    assert student_assignment["status"]["score"] == 92
+    assert student_assignment["status"]["teacher_comment"] == "论证更完整，下一版注意补充数据来源。"
+    assert student_assignment["status"]["teacher_comment_unread"] is True
+
+    history_response = client.get(f"/api/assignments/{assignment_id}/submissions")
+    assert history_response.status_code == 200
+    history_item = history_response.json()[0]
+    assert history_item["id"] == submission_id
+    assert history_item["teacher_comment_unread"] is True
+
+    viewed_response = client.post(f"/api/assignments/{assignment_id}/submissions/{submission_id}/teacher-comment/viewed")
+    assert viewed_response.status_code == 200
+    assert viewed_response.json()["teacher_comment_unread"] is False
+
+    student_list_response = client.get("/api/assignments")
+    student_assignment = next(item for item in student_list_response.json() if item["id"] == assignment_id)
+    assert student_assignment["status"]["teacher_comment_unread"] is False
+
+    update_response = client.patch(
+        f"/api/admin/submissions/{submission_id}/grade",
+        json={"score": 93, "teacher_comment": "评语更新：数据来源已经补充，结构还可以更紧凑。"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["teacher_comment_unread"] is True
+
+    student_list_response = client.get("/api/assignments")
+    student_assignment = next(item for item in student_list_response.json() if item["id"] == assignment_id)
+    assert student_assignment["status"]["score"] == 93
+    assert student_assignment["status"]["teacher_comment"] == "评语更新：数据来源已经补充，结构还可以更紧凑。"
+    assert student_assignment["status"]["teacher_comment_unread"] is True
+
+
 def test_ai_review_force_regenerates_latest_without_overwriting_history(classroom_client, monkeypatch):
     client, SessionLocal, storage = classroom_client
     db = SessionLocal()

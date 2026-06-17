@@ -62,6 +62,7 @@ class AssignmentOutWithFiles(AssignmentOut):
 
 class GradeSubmission(BaseModel):
     score: Optional[float] = None
+    teacher_comment: Optional[str] = None
 
 class AssignmentAISettings(BaseModel):
     ai_grading_rubric: Optional[str] = None

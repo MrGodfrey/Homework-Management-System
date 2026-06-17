@@ -55,6 +55,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
   const adminPage = await adminContext.newPage();
   const sandboxTitle = "Regression Sandbox";
   const sandboxEditedDescription = "Created and updated by the browser regression suite.";
+  const teacherComment = "论证更完整，下一版注意补充数据来源。";
 
   const invalidUpload = testInfo.outputPath("invalid-upload.txt");
   const compressedUpload = testInfo.outputPath("archive.zip");
@@ -339,6 +340,7 @@ test("website regression covers the full classroom workflow", async ({ browser }
     const scoreInput = gradeDialog.getByRole("spinbutton");
     await expect(scoreInput).toHaveValue("87");
     await scoreInput.fill("92");
+    await gradeDialog.getByPlaceholder("可选，学生端会在成绩处查看").fill(teacherComment);
     await gradeDialog.getByRole("button", { name: "保存" }).click();
     await expect(adminPage.getByText("评分成功")).toBeVisible();
     await expect(tableRowByText(adminPage, studentAccount.studentId)).toContainText("92分");
@@ -406,6 +408,27 @@ test("website regression covers the full classroom workflow", async ({ browser }
     await studentPage.goto("/assignments");
     const essayRow = tableRowByText(studentPage, "Essay Draft");
     await expect(essayRow).toContainText("92");
+    const scoreCommentButton = essayRow.getByRole("button", { name: /查看教师评语/ });
+    await expect(scoreCommentButton).toBeVisible();
+    await expect(scoreCommentButton.locator(".comment-unread-star")).toBeVisible();
+    await scoreCommentButton.click();
+    const teacherCommentDialog = studentPage.getByRole("dialog", { name: "教师评语" });
+    await expect(teacherCommentDialog).toContainText("92分");
+    await expect(teacherCommentDialog).toContainText(teacherComment);
+    await studentPage.keyboard.press("Escape");
+    await expect(scoreCommentButton.locator(".comment-unread-star")).toHaveCount(0);
+
+    await essayRow.getByRole("button", { name: "历史" }).click();
+    await expect(studentPage).toHaveURL(/\/assignments\/1\/submissions$/);
+    const latestHistoryCard = studentPage.locator(".version-card").first();
+    const historyCommentButton = latestHistoryCard.getByRole("button", { name: /查看教师评语/ });
+    await expect(historyCommentButton).toBeVisible();
+    await historyCommentButton.click();
+    const historyTeacherCommentDialog = studentPage.getByRole("dialog", { name: "教师评语" });
+    await expect(historyTeacherCommentDialog).toContainText(teacherComment);
+    await studentPage.keyboard.press("Escape");
+
+    await studentPage.goto("/assignments");
     await expect(studentPage.getByText(/AI|初评|建议分/)).toHaveCount(0);
     await studentPage.getByRole("button", { name: /退出登录/ }).click();
     await expect(studentPage).toHaveURL(/\/login$/);

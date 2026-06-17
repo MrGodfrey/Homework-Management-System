@@ -48,6 +48,9 @@ class Submission(Base):
     submitted_at = Column(DateTime, default=beijing_now)
     score = Column(Float, nullable=True)  # 具体分数
     is_graded = Column(Boolean, default=False, nullable=False)  # 是否已批改
+    teacher_comment = Column(Text, nullable=True)
+    teacher_comment_updated_at = Column(DateTime, nullable=True)
+    teacher_comment_seen_at = Column(DateTime, nullable=True)
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")
     files = relationship("SubmissionFile", back_populates="submission")

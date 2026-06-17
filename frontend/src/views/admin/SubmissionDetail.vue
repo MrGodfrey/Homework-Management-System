@@ -81,8 +81,11 @@
                     </el-table-column>
                     <el-table-column label="分数" width="120" align="center">
                       <template #default="{ row: sub }">
-                        <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
-                        <el-tag v-else effect="light">待评分</el-tag>
+                        <div class="score-cell">
+                          <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
+                          <el-tag v-else effect="light">待评分</el-tag>
+                          <el-tag v-if="sub.has_teacher_comment" type="info" effect="plain" size="small">有评语</el-tag>
+                        </div>
                       </template>
                     </el-table-column>
                     <el-table-column label="AI 初评" min-width="150" align="center">
@@ -183,8 +186,11 @@
                     <span class="meta-label">{{ formatDate(sub.time) }}</span>
                   </div>
                   <div class="inline-actions">
-                    <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
-                    <el-tag v-else effect="light">待评分</el-tag>
+                    <span class="score-cell compact">
+                      <el-tag v-if="sub.is_graded" type="success" effect="light">{{ sub.score }}分</el-tag>
+                      <el-tag v-else effect="light">待评分</el-tag>
+                      <el-tag v-if="sub.has_teacher_comment" type="info" effect="plain" size="small">有评语</el-tag>
+                    </span>
                     <el-tag :type="aiStatusType(sub.ai_review_status)" effect="light">{{ aiStatusLabel(sub.ai_review_status) }}</el-tag>
                     <span v-if="sub.ai_score !== null && sub.ai_score !== undefined" class="ai-score">{{ sub.ai_score }}分</span>
                     <el-button size="small" @click="downloadSingle(sub)" :loading="downloadingSingle === sub.id">下载</el-button>
@@ -219,13 +225,23 @@
         </div>
       </section>
 
-      <el-dialog v-model="gradeDialogVisible" title="评分" width="min(520px, 92vw)">
+      <el-dialog v-model="gradeDialogVisible" title="评分" width="min(620px, 92vw)">
         <el-form :model="gradeForm" label-width="80px">
           <el-form-item label="学生">
             <span>{{ currentStudent?.student_name }} ({{ currentStudent?.student_id }})</span>
           </el-form-item>
           <el-form-item label="分数">
             <el-input-number v-model="gradeForm.score" :min="0" :max="100" :step="1" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="评语">
+            <el-input
+              v-model="gradeForm.teacher_comment"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 8 }"
+              maxlength="2000"
+              show-word-limit
+              placeholder="可选，学生端会在成绩处查看"
+            />
           </el-form-item>
           <el-form-item v-if="currentStudent?.ai_review_status === 'succeeded'" label="AI 建议">
             <div class="ai-grade-reference">
@@ -355,7 +371,7 @@ const aiBatchProgress = reactive({
 const gradeDialogVisible = ref(false)
 const grading = ref(false)
 const currentStudent = ref(null)
-const gradeForm = reactive({ score: 85 })
+const gradeForm = reactive({ score: 85, teacher_comment: '' })
 const tableRef = ref(null)
 const assignmentTitle = ref('提交详情')
 const submissionSearch = ref('')
@@ -483,7 +499,8 @@ function handleAICommand(command, row) {
 
 function openGradeDialog(row) {
   currentStudent.value = row
-  gradeForm.score = row.score || 85
+  gradeForm.score = row.score ?? 85
+  gradeForm.teacher_comment = row.teacher_comment || ''
   gradeDialogVisible.value = true
 }
 
@@ -612,7 +629,8 @@ async function submitGrade() {
   grading.value = true
   try {
     await api.patch(`/admin/submissions/${currentStudent.value.id}/grade`, {
-      score: gradeForm.score
+      score: gradeForm.score,
+      teacher_comment: gradeForm.teacher_comment
     })
     ElMessage.success('评分成功')
     gradeDialogVisible.value = false
@@ -778,6 +796,18 @@ onMounted(loadSubmissions)
   justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.score-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.score-cell.compact {
+  justify-content: flex-start;
 }
 
 .ai-score {

@@ -23,6 +23,38 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
+
+def _has_teacher_comment(submission: Submission) -> bool:
+    return bool((submission.teacher_comment or "").strip())
+
+
+def _teacher_comment_unread(submission: Submission) -> bool:
+    if not _has_teacher_comment(submission):
+        return False
+    if not submission.teacher_comment_seen_at:
+        return True
+    if submission.teacher_comment_updated_at:
+        return submission.teacher_comment_seen_at < submission.teacher_comment_updated_at
+    return False
+
+
+def _serialize_teacher_comment_state(submission: Submission | None) -> dict:
+    if not submission or not _has_teacher_comment(submission):
+        return {
+            "graded_submission_id": submission.id if submission else None,
+            "teacher_comment": None,
+            "teacher_comment_updated_at": None,
+            "teacher_comment_unread": False,
+            "has_teacher_comment": False,
+        }
+    return {
+        "graded_submission_id": submission.id,
+        "teacher_comment": submission.teacher_comment,
+        "teacher_comment_updated_at": submission.teacher_comment_updated_at,
+        "teacher_comment_unread": _teacher_comment_unread(submission),
+        "has_teacher_comment": True,
+    }
+
 @router.get("/me", response_model=StudentMeOut)
 def get_current_student_info(current_student: Student = Depends(get_current_student)):
     """GET /api/assignments/me - 获取当前登录学生的信息"""
@@ -71,7 +103,8 @@ def get_assignments(db: Session = Depends(get_db), current_student: Student = De
             "version_no": latest_sub.version_no if latest_sub else None,
             "submitted_at": latest_sub.submitted_at if latest_sub else None,
             "score": latest_graded.score if latest_graded else None,
-            "is_graded": latest_graded is not None
+            "is_graded": latest_graded is not None,
+            **_serialize_teacher_comment_state(latest_graded),
         }
         
         results.append({
@@ -289,9 +322,36 @@ def get_submission_history(id: int, db: Session = Depends(get_db), current_stude
             })
             
         history.append({
+            "id": sub.id,
             "version_no": sub.version_no,
             "submitted_at": sub.submitted_at,
+            "score": sub.score,
+            "is_graded": sub.is_graded,
+            **_serialize_teacher_comment_state(sub),
             "files": files
         })
         
     return history
+
+
+@router.post("/{assignment_id}/submissions/{submission_id}/teacher-comment/viewed")
+def mark_teacher_comment_viewed(
+    assignment_id: int,
+    submission_id: int,
+    db: Session = Depends(get_db),
+    current_student: Student = Depends(get_current_student),
+):
+    submission = db.query(Submission).filter(
+        Submission.id == submission_id,
+        Submission.assignment_id == assignment_id,
+        Submission.student_id == current_student.id,
+    ).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    if _has_teacher_comment(submission):
+        submission.teacher_comment_seen_at = beijing_now()
+        db.commit()
+        db.refresh(submission)
+
+    return _serialize_teacher_comment_state(submission)

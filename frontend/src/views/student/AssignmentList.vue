@@ -73,7 +73,17 @@
             </el-table-column>
             <el-table-column label="最终得分" min-width="120" align="center">
               <template #default="{ row }">
-                <span v-if="row.status.is_graded" class="score-text">{{ row.status.score }}</span>
+                <button
+                  v-if="row.status.is_graded && hasTeacherComment(row.status)"
+                  type="button"
+                  class="score-comment-button"
+                  :aria-label="`查看教师评语：${row.title}`"
+                  @click="openTeacherComment(row)"
+                >
+                  <span>{{ row.status.score }}</span>
+                  <span v-if="row.status.teacher_comment_unread" class="comment-unread-star" aria-hidden="true">*</span>
+                </button>
+                <span v-else-if="row.status.is_graded" class="score-text">{{ row.status.score }}</span>
                 <span v-else class="muted-copy">{{ row.status.submitted ? '待批改' : '-' }}</span>
               </template>
             </el-table-column>
@@ -114,7 +124,19 @@
                 <div class="meta-pair">
                   <span class="meta-label">最终得分</span>
                   <span class="meta-value">
-                    {{ assignment.status.is_graded ? assignment.status.score : assignment.status.submitted ? '待批改' : '-' }}
+                    <button
+                      v-if="assignment.status.is_graded && hasTeacherComment(assignment.status)"
+                      type="button"
+                      class="score-comment-button"
+                      :aria-label="`查看教师评语：${assignment.title}`"
+                      @click="openTeacherComment(assignment)"
+                    >
+                      <span>{{ assignment.status.score }}</span>
+                      <span v-if="assignment.status.teacher_comment_unread" class="comment-unread-star" aria-hidden="true">*</span>
+                    </button>
+                    <span v-else>
+                      {{ assignment.status.is_graded ? assignment.status.score : assignment.status.submitted ? '待批改' : '-' }}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -139,6 +161,16 @@
         </el-table>
         <div v-if="interactionItems.length === 0" class="dialog-empty">暂无互动记录</div>
       </el-dialog>
+
+      <el-dialog v-model="teacherCommentDialogVisible" title="教师评语" width="min(560px, 92vw)">
+        <div class="teacher-comment-dialog">
+          <div class="comment-dialog-meta">
+            <span>{{ activeTeacherComment.title }}</span>
+            <strong>{{ activeTeacherComment.score }}分</strong>
+          </div>
+          <p class="teacher-comment-text">{{ activeTeacherComment.comment }}</p>
+        </div>
+      </el-dialog>
     </div>
   </AppShell>
 </template>
@@ -156,6 +188,14 @@ const loading = ref(false)
 const interactionCount = ref(0)
 const interactionItems = ref([])
 const showInteractionDetail = ref(false)
+const teacherCommentDialogVisible = ref(false)
+const activeTeacherComment = ref({
+  assignmentId: null,
+  submissionId: null,
+  title: '',
+  score: null,
+  comment: ''
+})
 
 const submittedCount = computed(() => assignments.value.filter((item) => item.status?.submitted).length)
 const pendingCount = computed(() => Math.max(assignments.value.length - submittedCount.value, 0))
@@ -178,6 +218,33 @@ function formatDate(d) {
     return `${month}-${day} ${hours}:${minutes}`
   }
   return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+function hasTeacherComment(status) {
+  return Boolean(status?.has_teacher_comment && status?.teacher_comment)
+}
+
+async function openTeacherComment(assignment) {
+  const status = assignment.status || {}
+  if (!hasTeacherComment(status)) return
+
+  activeTeacherComment.value = {
+    assignmentId: assignment.id,
+    submissionId: status.graded_submission_id,
+    title: assignment.title,
+    score: status.score,
+    comment: status.teacher_comment
+  }
+  teacherCommentDialogVisible.value = true
+
+  if (!status.teacher_comment_unread || !status.graded_submission_id) return
+
+  try {
+    await api.post(`/assignments/${assignment.id}/submissions/${status.graded_submission_id}/teacher-comment/viewed`)
+    status.teacher_comment_unread = false
+  } catch {
+    ElMessage.error('评语状态更新失败')
+  }
 }
 
 async function loadData() {
@@ -209,6 +276,67 @@ async function loadData() {
 .score-text {
   color: var(--brand);
   font-weight: 800;
+}
+
+.score-comment-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 28px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.score-comment-button:hover,
+.score-comment-button:focus-visible {
+  color: #0f766e;
+}
+
+.comment-unread-star {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  color: #dc2626;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.teacher-comment-dialog {
+  display: grid;
+  gap: 12px;
+}
+
+.comment-dialog-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.comment-dialog-meta strong {
+  color: var(--brand);
+}
+
+.teacher-comment-text {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 .muted-copy {
