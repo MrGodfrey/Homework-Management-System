@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Student, Instructor
 from app.auth import verify_password, create_access_token
+from app.config import settings
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
@@ -67,7 +68,12 @@ def login_student(data: StudentLogin, db: Session = Depends(get_db)):
         "student_login_succeeded",
         extra={"user_type": "student", "user_id": student.id, "student_no": student.student_id},
     )
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "student_portal_closed": settings.student_portal_closed,
+        "student_portal_closed_message": settings.STUDENT_PORTAL_CLOSED_MESSAGE,
+    }
 
 @router.post("/instructor/login")
 def login_instructor(data: InstructorLogin, db: Session = Depends(get_db)):

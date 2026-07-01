@@ -128,7 +128,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Upload } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
-import api from '@/utils/api'
+import api, { getStudentPortalClosedDetail } from '@/utils/api'
 import {
   DEFAULT_SUBMISSION_UPLOAD_LIMIT_BYTES,
   formatFileSize,
@@ -248,8 +248,10 @@ async function loadAssignment() {
 
     const attachmentsRes = await api.get(`/assignments/${route.params.id}/attachments`)
     attachments.value = attachmentsRes.data
-  } catch {
-    ElMessage.error('加载作业详情失败')
+  } catch (e) {
+    if (!getStudentPortalClosedDetail(e)) {
+      ElMessage.error('加载作业详情失败')
+    }
   } finally {
     loading.value = false
   }

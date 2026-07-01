@@ -23,6 +23,9 @@ from app.models import AIGradingJob, AIGradingResult, Assignment, Instructor, St
 from app.routers import admin as admin_router
 from app.routers import student as student_router
 from app.services import llm_client
+from app.services.ai_grading import _parse_model_report
+from app.services.submission_extractor import ExtractedSubmission
+import ai_review_batch_cli
 
 
 @pytest.fixture()
@@ -264,6 +267,26 @@ def test_student_can_upload_notebook_without_ai_side_effects(classroom_client):
         assert db.query(AIGradingJob).count() == 0
     finally:
         db.close()
+
+
+def test_ai_review_parser_salvages_score_from_malformed_json():
+    content = (
+        '{\n'
+        '  "score": 95,\n'
+        '  "confidence": "high",\n'
+        '  "summary": "第一行\n第二行",\n'
+        '  "teacher_notes": "模型在字符串里输出了未转义换行"\n'
+        '}'
+    )
+    extraction = ExtractedSubmission(notices=["Notebook outputs 已忽略"], truncated=True)
+
+    report = _parse_model_report(content, extraction)
+
+    assert report["score"] == 95
+    assert report["confidence"] == "high"
+    assert "模型输出格式异常" in report["flags"]
+    assert "Notebook outputs 已忽略" in report["flags"]
+    assert "内容被截断" in report["flags"]
 
 
 def test_admin_ai_settings_are_admin_only_and_student_payloads_hide_them(classroom_client):
@@ -562,6 +585,166 @@ def test_batch_ai_review_processes_latest_unreviewed_versions_only(classroom_cli
         assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v1_id).count() == 0
         assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == alice_v2_id).one().report_text == "已有最新版初评"
         assert db.query(AIGradingResult).filter(AIGradingResult.submission_id == bob_v1_id).one().version_no == 1
+    finally:
+        db.close()
+
+
+def test_batch_ai_review_aborts_on_fatal_provider_error(classroom_client, monkeypatch):
+    client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        alice = create_submission(db, storage, assignment, "20230001", 1, "alice.md", b"# Alice\n")
+        bob = create_submission(db, storage, assignment, "20230002", 1, "bob.md", b"# Bob\n")
+        assignment_id = assignment.id
+        alice_id = alice.id
+        bob_id = bob.id
+    finally:
+        db.close()
+
+    def provider_billing_error(**_kwargs):
+        raise RuntimeError("402 Client Error: Payment Required for url: https://tokenhub.tencentmaas.com/v1/chat/completions")
+
+    monkeypatch.setattr(llm_client, "create_chat_completion", provider_billing_error)
+    response = client.post(
+        f"/api/admin/assignments/{assignment_id}/ai-review-jobs",
+        json={"scope": "latest_unreviewed_per_student"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["failed"] == 1
+    assert payload["aborted"] is True
+    assert "402 Client Error" in payload["abort_reason"]
+    assert payload["items"][0]["submission_id"] == alice_id
+
+    db = SessionLocal()
+    try:
+        assert db.query(AIGradingJob).count() == 1
+        assert db.query(AIGradingResult).count() == 0
+        assert db.query(AIGradingJob).one().submission_id == alice_id
+        assert db.query(AIGradingJob).filter(AIGradingJob.submission_id == bob_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_ai_review_cli_streams_per_item_events(classroom_client, monkeypatch):
+    _client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        first = create_submission(db, storage, assignment, "20230001", 1, "alice.md", b"# Alice\n")
+        second = create_submission(db, storage, assignment, "20230002", 1, "bob.md", b"# Bob\n")
+        assignment_id = assignment.id
+        first_id = first.id
+        second_id = second.id
+    finally:
+        db.close()
+
+    def fake_completion(**_kwargs):
+        return {
+            "content": json.dumps({
+                "score": 82,
+                "confidence": "medium",
+                "summary": "CLI streaming test.",
+                "rubric_alignment": [],
+                "missing_or_weak_items": [],
+                "teacher_notes": "Generated from CLI.",
+                "evidence": [],
+                "flags": [],
+            }, ensure_ascii=False),
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+        }
+
+    monkeypatch.setattr(ai_review_batch_cli, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(ai_review_batch_cli, "read_file_from_storage", lambda cos_key: storage[cos_key])
+    monkeypatch.setattr(llm_client, "create_chat_completion", fake_completion)
+
+    events = []
+    args = ai_review_batch_cli.parse_args([
+        "--assignment-id",
+        str(assignment_id),
+        "--heartbeat-seconds",
+        "0",
+    ])
+    summary = ai_review_batch_cli.run_batch(args, events.append)
+
+    assert summary["succeeded"] == 2
+    event_names = [event["event"] for event in events]
+    assert event_names == [
+        "plan",
+        "assignment_start",
+        "item_start",
+        "item_done",
+        "item_start",
+        "item_done",
+        "assignment_done",
+        "complete",
+    ]
+    done_ids = [event["submission_id"] for event in events if event["event"] == "item_done"]
+    assert done_ids == [first_id, second_id]
+    assert all(event["status"] == "succeeded" for event in events if event["event"] == "item_done")
+
+
+def test_ai_review_cli_emits_heartbeat_while_item_runs():
+    events = []
+
+    def slow_callback():
+        time.sleep(0.03)
+        return {"ok": True}
+
+    result = ai_review_batch_cli.run_with_heartbeat(
+        slow_callback,
+        heartbeat_seconds=0.005,
+        heartbeat_fields={"submission_id": 123},
+        emit=events.append,
+    )
+
+    assert result == {"ok": True}
+    assert any(event["event"] == "item_heartbeat" and event["submission_id"] == 123 for event in events)
+
+
+def test_ai_review_cli_aborts_on_fatal_provider_error(classroom_client, monkeypatch):
+    _client, SessionLocal, storage = classroom_client
+    db = SessionLocal()
+    try:
+        assignment = create_assignment(db, file_rules=".md")
+        first = create_submission(db, storage, assignment, "20230001", 1, "alice.md", b"# Alice\n")
+        second = create_submission(db, storage, assignment, "20230002", 1, "bob.md", b"# Bob\n")
+        assignment_id = assignment.id
+        first_id = first.id
+        second_id = second.id
+    finally:
+        db.close()
+
+    def provider_billing_error(**_kwargs):
+        raise RuntimeError("402 Client Error: Payment Required for url: https://tokenhub.tencentmaas.com/v1/chat/completions")
+
+    monkeypatch.setattr(ai_review_batch_cli, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(ai_review_batch_cli, "read_file_from_storage", lambda cos_key: storage[cos_key])
+    monkeypatch.setattr(llm_client, "create_chat_completion", provider_billing_error)
+
+    events = []
+    args = ai_review_batch_cli.parse_args([
+        "--assignment-id",
+        str(assignment_id),
+        "--heartbeat-seconds",
+        "0",
+    ])
+    summary = ai_review_batch_cli.run_batch(args, events.append)
+
+    assert summary["aborted"] is True
+    assert summary["failed"] == 1
+    assert any(event["event"] == "abort" and "402 Client Error" in event["reason"] for event in events)
+    assert [event["submission_id"] for event in events if event["event"] == "item_done"] == [first_id]
+
+    db = SessionLocal()
+    try:
+        assert db.query(AIGradingJob).count() == 1
+        assert db.query(AIGradingJob).one().submission_id == first_id
+        assert db.query(AIGradingJob).filter(AIGradingJob.submission_id == second_id).count() == 0
     finally:
         db.close()
 

@@ -55,8 +55,11 @@ async function handleLogin() {
   loading.value = true
   try {
     const res = await api.post('/auth/student/login', form)
-    auth.setAuth(res.data.access_token, 'student')
-    router.push('/assignments')
+    auth.setAuth(res.data.access_token, 'student', {
+      studentPortalClosed: res.data.student_portal_closed,
+      studentPortalClosedMessage: res.data.student_portal_closed_message
+    })
+    router.push(res.data.student_portal_closed ? '/course-closed' : '/assignments')
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '登录失败')
   } finally {

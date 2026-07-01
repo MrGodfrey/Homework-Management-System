@@ -180,7 +180,7 @@ import { computed, ref, onMounted } from 'vue'
 import { CircleCheckFilled, DataBoard, Tickets, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
-import api from '@/utils/api'
+import api, { getStudentPortalClosedDetail } from '@/utils/api'
 
 const assignments = ref([])
 const userInfo = ref(null)
@@ -260,8 +260,10 @@ async function loadData() {
     assignments.value = res.data
     interactionCount.value = intRes.data.count
     interactionItems.value = intRes.data.items
-  } catch {
-    ElMessage.error('加载数据失败')
+  } catch (e) {
+    if (!getStudentPortalClosedDetail(e)) {
+      ElMessage.error('加载数据失败')
+    }
   } finally {
     loading.value = false
   }

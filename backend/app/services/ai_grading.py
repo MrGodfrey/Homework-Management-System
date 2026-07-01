@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, time as datetime_time
 from typing import Any, Callable, Optional
@@ -16,6 +17,16 @@ from app.services.submission_extractor import ExtractedSubmission, extract_submi
 logger = logging.getLogger(__name__)
 PROVIDER = "tencent_maas_tokenhub"
 VALID_BATCH_SCOPES = {"all_unreviewed_versions", "latest_unreviewed_per_student", "selected_submission_ids"}
+SCORE_FIELD_RE = re.compile(r'"score"\s*:\s*"?(-?\d+(?:\.\d+)?)"?', re.IGNORECASE)
+CONFIDENCE_FIELD_RE = re.compile(r'"confidence"\s*:\s*"?(low|medium|high)"?', re.IGNORECASE)
+FATAL_BATCH_ERROR_MARKERS = (
+    "401 Client Error",
+    "402 Client Error",
+    "403 Client Error",
+    "Payment Required",
+    "Unauthorized",
+    "Forbidden",
+)
 
 
 def serialize_result(result: Optional[AIGradingResult]) -> Optional[dict]:
@@ -262,6 +273,8 @@ def run_batch_ai_review(
     succeeded = 0
     failed = 0
     reused = 0
+    aborted = False
+    abort_reason = None
 
     for submission in submissions:
         item = generate_ai_review(
@@ -280,6 +293,10 @@ def run_batch_ai_review(
             succeeded += 1
         elif job and job.get("status") == "failed":
             failed += 1
+            error_message = job.get("error_message")
+            if _is_fatal_batch_error(error_message):
+                aborted = True
+                abort_reason = error_message
         items.append({
             "submission_id": submission.id,
             "version_no": submission.version_no,
@@ -289,6 +306,8 @@ def run_batch_ai_review(
             "job": job,
             "result": result,
         })
+        if aborted:
+            break
 
     return {
         "assignment_id": assignment_id,
@@ -297,8 +316,16 @@ def run_batch_ai_review(
         "succeeded": succeeded,
         "failed": failed,
         "reused": reused,
+        "aborted": aborted,
+        "abort_reason": abort_reason,
         "items": items,
     }
+
+
+def _is_fatal_batch_error(error_message: Optional[str]) -> bool:
+    if not error_message:
+        return False
+    return any(marker in error_message for marker in FATAL_BATCH_ERROR_MARKERS)
 
 
 def _select_batch_submissions(
@@ -409,16 +436,7 @@ def _parse_model_report(content: str, extraction: ExtractedSubmission) -> dict[s
                 parsed = None
 
     if not isinstance(parsed, dict):
-        parsed = {
-            "score": None,
-            "confidence": "low",
-            "summary": "模型未返回可解析 JSON，请教师直接查看原始提交。",
-            "rubric_alignment": [],
-            "missing_or_weak_items": [],
-            "teacher_notes": content[:1000],
-            "evidence": [],
-            "flags": ["模型输出格式异常"],
-        }
+        parsed = _fallback_report_from_unparseable_text(content)
 
     score = parsed.get("score")
     try:
@@ -439,6 +457,36 @@ def _parse_model_report(content: str, extraction: ExtractedSubmission) -> dict[s
         flags.append("内容被截断")
     parsed["flags"] = flags
     return parsed
+
+
+def _fallback_report_from_unparseable_text(content: str) -> dict[str, Any]:
+    return {
+        "score": _extract_score_field(content),
+        "confidence": _extract_confidence_field(content) or "low",
+        "summary": "模型未返回可解析 JSON，已尽量从原始输出中提取建议分，请教师复核。",
+        "rubric_alignment": [],
+        "missing_or_weak_items": [],
+        "teacher_notes": content[:1000],
+        "evidence": [],
+        "flags": ["模型输出格式异常"],
+    }
+
+
+def _extract_score_field(content: str) -> Optional[float]:
+    match = SCORE_FIELD_RE.search(content or "")
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_confidence_field(content: str) -> Optional[str]:
+    match = CONFIDENCE_FIELD_RE.search(content or "")
+    if not match:
+        return None
+    return match.group(1).lower()
 
 
 def _build_report_text(report: dict[str, Any], extraction: ExtractedSubmission) -> str:

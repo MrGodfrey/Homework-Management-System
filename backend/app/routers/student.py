@@ -24,6 +24,30 @@ router = APIRouter(
 logger = logging.getLogger(__name__)
 
 
+def _student_portal_closed_detail() -> dict:
+    return {
+        "code": "STUDENT_PORTAL_CLOSED",
+        "message": settings.STUDENT_PORTAL_CLOSED_MESSAGE,
+    }
+
+
+def require_student_portal_open(current_student: Student = Depends(get_current_student)) -> Student:
+    if settings.student_portal_closed:
+        logger.info(
+            "student_portal_closed_access_blocked",
+            extra={
+                "user_type": "student",
+                "user_id": current_student.id,
+                "student_no": current_student.student_id,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_student_portal_closed_detail(),
+        )
+    return current_student
+
+
 def _has_teacher_comment(submission: Submission) -> bool:
     return bool((submission.teacher_comment or "").strip())
 
@@ -64,7 +88,7 @@ def get_current_student_info(current_student: Student = Depends(get_current_stud
     }
 
 @router.get("/interactions")
-def get_my_interactions(db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+def get_my_interactions(db: Session = Depends(get_db), current_student: Student = Depends(require_student_portal_open)):
     """GET /api/assignments/interactions - 获取当前学生的互动记录"""
     interactions = db.query(Interaction).filter(
         Interaction.student_id == current_student.id
@@ -81,7 +105,7 @@ def get_my_interactions(db: Session = Depends(get_db), current_student: Student 
     }
 
 @router.get("")
-def get_assignments(db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+def get_assignments(db: Session = Depends(get_db), current_student: Student = Depends(require_student_portal_open)):
     """GET /api/assignments - assignment list + current student submission status"""
     assignments = db.query(Assignment).all()
     results = []
@@ -117,7 +141,7 @@ def get_assignments(db: Session = Depends(get_db), current_student: Student = De
     return results
 
 @router.get("/{id}")
-def get_assignment_detail(id: int, db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+def get_assignment_detail(id: int, db: Session = Depends(get_db), current_student: Student = Depends(require_student_portal_open)):
     """GET /api/assignments/{id} - assignment details"""
     assign = db.query(Assignment).filter(Assignment.id == id).first()
     if not assign:
@@ -132,7 +156,7 @@ def get_assignment_detail(id: int, db: Session = Depends(get_db), current_studen
     }
 
 @router.get("/{id}/attachments")
-def get_assignment_attachments(id: int, db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+def get_assignment_attachments(id: int, db: Session = Depends(get_db), current_student: Student = Depends(require_student_portal_open)):
     """GET /api/assignments/{id}/attachments - 获取作业附件列表（学生端）"""
     assign = db.query(Assignment).filter(Assignment.id == id).first()
     if not assign:
@@ -159,7 +183,7 @@ def get_attachment_download_url(
     assignment_id: int, 
     file_id: int, 
     db: Session = Depends(get_db), 
-    current_student: Student = Depends(get_current_student)
+    current_student: Student = Depends(require_student_portal_open)
 ):
     """GET /api/assignments/{assignment_id}/attachments/{file_id}/download - 获取附件下载链接（学生端）"""
     # 验证作业是否存在
@@ -189,7 +213,7 @@ async def submit_assignment(
     id: int, 
     files: List[UploadFile] = File(...), 
     db: Session = Depends(get_db), 
-    current_student: Student = Depends(get_current_student)
+    current_student: Student = Depends(require_student_portal_open)
 ):
     """POST /api/assignments/{id}/submit"""
     assign = db.query(Assignment).filter(Assignment.id == id).first()
@@ -303,7 +327,7 @@ async def submit_assignment(
     }
 
 @router.get("/{id}/submissions")
-def get_submission_history(id: int, db: Session = Depends(get_db), current_student: Student = Depends(get_current_student)):
+def get_submission_history(id: int, db: Session = Depends(get_db), current_student: Student = Depends(require_student_portal_open)):
     """GET /api/assignments/{id}/submissions - submission history"""
     submissions = db.query(Submission).filter(
         Submission.assignment_id == id,
@@ -339,7 +363,7 @@ def mark_teacher_comment_viewed(
     assignment_id: int,
     submission_id: int,
     db: Session = Depends(get_db),
-    current_student: Student = Depends(get_current_student),
+    current_student: Student = Depends(require_student_portal_open),
 ):
     submission = db.query(Submission).filter(
         Submission.id == submission_id,

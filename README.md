@@ -24,6 +24,7 @@ Classroom 是一个面向高校小班教学场景（30 人左右，6-8 次作业
 - 🤖 **AI 辅助评阅** — 教师为每次作业填写私有评分参考，手动生成单个或批量 AI 初评
 - 🔒 **安全设计** — JWT 认证 + bcrypt 加密 + 登录锁定 + 审计日志
 - 🌐 **环境隔离** — DEV / PROD 一键切换，开发与生产互不干扰
+- 📴 **学期结束关闭模式** — 可暂停学生端作业、历史提交与成绩查看，保留教师端管理能力
 - ⚡ **一键启动** — 单条命令即可搭建本地开发环境
 
 ---
@@ -60,6 +61,7 @@ Classroom 是一个面向高校小班教学场景（30 人左右，6-8 次作业
 - 查看提交历史与成绩
 - 查看课堂互动次数与详细记录
 - 下载作业附件
+- 学期结束后可统一显示课程关闭提示，不再开放历史提交与分数查看
 
 </td>
 <td width="50%" valign="top">
@@ -151,6 +153,10 @@ COS_SECRET_KEY=your-cos-secret-key
 COS_REGION=ap-guangzhou
 COS_BUCKET=your-bucket-name
 
+# 学期结束关闭学生端（可选；未设置时 PROD 默认关闭，DEV 默认开放）
+# STUDENT_PORTAL_CLOSED=false
+# STUDENT_PORTAL_CLOSED_MESSAGE=本学期课程已顺利结束，作业系统现已关闭。感谢你这个学期的认真投入；历史提交与分数查看通道已暂停开放。如有特殊情况，请联系任课老师。
+
 # AI 辅助评阅（可选；没有真实 key 时可把 AI_GRADING_FAKE_RESPONSE 设为 1）
 TENCENT_MODEL_KEY_SECRET=your-tokenhub-api-key
 HOMEWORK_SUMMARY_MODEL=deepseek-v4-flash
@@ -221,6 +227,27 @@ scp <ssh-host-alias>:<project-dir>/backend/logs/classroom.log ./classroom-online
 
 ---
 
+## 📴 学期结束关闭学生端
+
+系统支持通过环境变量暂停学生访问作业系统。关闭后，学生仍可登录，但只会看到课程结束提示页；学生端作业列表、作业详情、附件下载、提交入口、提交历史、成绩与教师评语接口都会由后端统一返回 `STUDENT_PORTAL_CLOSED`，不会返回历史提交或分数字段。教师端管理、批改、导出和后台数据不受影响。
+
+开关规则：
+
+- `STUDENT_PORTAL_CLOSED=true`：强制关闭学生端。
+- `STUDENT_PORTAL_CLOSED=false`：强制开放学生端。
+- 未设置时：`ENV=PROD` 默认关闭，`ENV=DEV` 默认开放。
+- `STUDENT_PORTAL_CLOSED_MESSAGE` 可自定义学生看到的提示文案。
+
+生产环境恢复学生访问时，在后端环境中显式设置：
+
+```env
+STUDENT_PORTAL_CLOSED=false
+```
+
+然后重启后端即可。关闭模式不删除数据库记录、不修改提交文件，也不影响教师端查看历史数据。
+
+---
+
 ## 🤖 AI 辅助评阅
 
 AI 初评是教师端的辅助工具，不会自动给学生打最终成绩，也不会在学生端展示。学生提交作业后系统不会自动调用模型；只有教师在提交详情页手动点击“生成 AI 初评”“重新生成”或“批量生成 AI 初评”时才会发起调用。
@@ -272,7 +299,7 @@ AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/auth/student/login` | 学生登录 |
+| POST | `/api/auth/student/login` | 学生登录；响应包含学生端关闭状态与提示文案 |
 | POST | `/api/auth/instructor/login` | 教师登录 |
 
 </details>
@@ -290,6 +317,8 @@ AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb
 | GET | `/api/assignments/interactions` | 查看课堂互动记录 |
 
 </details>
+
+> 当学生端关闭时，上述学生业务接口会返回 `403`，`detail.code` 为 `STUDENT_PORTAL_CLOSED`；`/api/assignments/me` 仍可用于关闭页显示学生姓名与学号。
 
 <details>
 <summary><strong>教师管理接口</strong>（需 JWT 认证）</summary>
@@ -378,6 +407,7 @@ AI 文本提取当前支持 `.md`、`.txt`、`.py`、`.tex`、`.csv` 和 `.ipynb
 | 操作审计 | 数据库审计表 + 应用请求/异常日志 |
 | 环境隔离 | DEV/PROD 独立存储路径 |
 | 文件安全 | 时间戳 + UUID 命名，防覆盖 |
+| 学期结束访问暂停 | 关闭学生端作业、提交历史、成绩、评语与附件接口，教师端保留 |
 | AI 边界 | 教师手动触发、学生端不可见、不自动覆盖最终成绩 |
 
 ---

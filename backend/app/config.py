@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
     AI_GRADING_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_DAILY_LIMIT", "200"))
     AI_GRADING_ASSIGNMENT_DAILY_LIMIT: int = int(os.getenv("AI_GRADING_ASSIGNMENT_DAILY_LIMIT", "100"))
     AI_GRADING_FAKE_RESPONSE: bool = False
+    STUDENT_PORTAL_CLOSED: Optional[bool] = None
+    STUDENT_PORTAL_CLOSED_MESSAGE: str = (
+        "本学期课程已顺利结束，作业系统现已关闭。"
+        "感谢你这个学期的认真投入；历史提交与分数查看通道已暂停开放。"
+        "如有特殊情况，请联系任课老师。"
+    )
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_DIR: str = os.getenv("LOG_DIR", str(BACKEND_DIR / "logs"))
     LOG_TO_FILE: bool = True
@@ -55,6 +62,27 @@ class Settings(BaseSettings):
             if normalized in {"0", "false", "no", "off"}:
                 return False
         return value
+
+    @field_validator("STUDENT_PORTAL_CLOSED", mode="before")
+    @classmethod
+    def parse_student_portal_closed(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return None
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return value
+
+    @property
+    def student_portal_closed(self) -> bool:
+        if self.STUDENT_PORTAL_CLOSED is not None:
+            return self.STUDENT_PORTAL_CLOSED
+        return self.ENV.upper() == "PROD"
 
     class Config:
         env_file = (PROJECT_ROOT / ".env", BACKEND_DIR / ".env")

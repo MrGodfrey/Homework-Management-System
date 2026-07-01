@@ -92,7 +92,7 @@ import { useRoute } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AppShell from '@/components/AppShell.vue'
-import api from '@/utils/api'
+import api, { getStudentPortalClosedDetail } from '@/utils/api'
 
 const route = useRoute()
 const history = ref([])
@@ -160,8 +160,10 @@ async function loadHistory() {
     ])
     history.value = historyRes.data
     assignment.value = assignmentRes.data
-  } catch {
-    ElMessage.error('加载历史失败')
+  } catch (e) {
+    if (!getStudentPortalClosedDetail(e)) {
+      ElMessage.error('加载历史失败')
+    }
   } finally {
     loading.value = false
   }

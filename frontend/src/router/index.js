@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', component: () => import('../views/student/Login.vue') },
+  { path: '/course-closed', meta: { requiresAuth: true, role: 'student' }, component: () => import('../views/student/CourseClosed.vue') },
   { path: '/assignments', meta: { requiresAuth: true, role: 'student' }, component: () => import('../views/student/AssignmentList.vue') },
   { path: '/assignments/:id', meta: { requiresAuth: true, role: 'student' }, component: () => import('../views/student/AssignmentDetail.vue') },
   { path: '/assignments/:id/submissions', meta: { requiresAuth: true, role: 'student' }, component: () => import('../views/student/SubmissionHistory.vue') },

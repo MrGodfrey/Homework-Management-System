@@ -102,6 +102,10 @@ const props = defineProps({
   displayMeta: {
     type: String,
     default: ''
+  },
+  studentPortalClosed: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -115,6 +119,12 @@ const navItems = computed(() => {
       { label: '看板', path: '/admin/dashboard', icon: DataBoard },
       { label: '作业管理', path: '/admin/assignments', icon: Document },
       { label: '学生管理', path: '/admin/students', icon: User },
+      { label: '课程主页', externalUrl: COURSE_HOME_URL, icon: HomeFilled }
+    ]
+  }
+
+  if (props.studentPortalClosed) {
+    return [
       { label: '课程主页', externalUrl: COURSE_HOME_URL, icon: HomeFilled }
     ]
   }
